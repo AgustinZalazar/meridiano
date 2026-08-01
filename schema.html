@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meridiano — Schema</title>
+<style>
+/* ── Tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --bg:        #12151A;
+  --surface:   #1C2129;
+  --surface2:  #242B36;
+  --border:    rgba(255,255,255,0.07);
+  --text:      #F7F4EF;
+  --muted:     #8A93A0;
+  --accent:    #D97757;
+  --accent-bg: rgba(217,119,87,0.12);
+  --fk:        #5B8DB8;
+  --fk-bg:     rgba(91,141,184,0.12);
+  --null-op:   0.45;
+  --radius:    14px;
+  --radius-sm: 7px;
+  --mono:      'IBM Plex Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+  --sans:      -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: light) { :root { --bg:#F7F4EF; --surface:#FFFFFF; --surface2:#EFEBE2; --border:rgba(18,21,26,0.09); --text:#12151A; --muted:#8A93A0; } }
+:root[data-theme="dark"]  { --bg:#12151A; --surface:#1C2129; --surface2:#242B36; --border:rgba(255,255,255,0.07); --text:#F7F4EF; --muted:#8A93A0; }
+:root[data-theme="light"] { --bg:#F7F4EF; --surface:#FFFFFF; --surface2:#EFEBE2; --border:rgba(18,21,26,0.09); --text:#12151A; --muted:#8A93A0; }
+
+/* ── Reset ──────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: 48px 32px 80px;
+}
+@media (max-width: 640px) { body { padding: 32px 16px 60px; } }
+
+/* ── Header ─────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 48px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.header-left { display: flex; align-items: baseline; gap: 14px; }
+.logo {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.title {
+  font-family: var(--sans);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.4px;
+}
+.subtitle {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+.theme-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  padding: 6px 14px;
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+.theme-btn:hover { color: var(--text); }
+
+/* ── Legend ─────────────────────────────────────────────────────────── */
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-pk  { background: var(--accent); }
+.dot-fk  { background: var(--fk); }
+.dot-col { background: var(--muted); opacity: 0.4; }
+
+/* ── Grid ───────────────────────────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 56px;
+}
+
+/* ── Table card ─────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.table-name {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+.row-count {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.col-list { padding: 6px 0; }
+.col-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  transition: background 0.1s;
+}
+.col-row:hover { background: var(--surface2); }
+.col-row.nullable .col-name,
+.col-row.nullable .col-type { opacity: var(--null-op); }
+.col-dot { flex-shrink: 0; }
+.col-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.col-badges { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+.badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  border-radius: 5px;
+  padding: 2px 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.badge-pk   { background: var(--accent-bg); color: var(--accent); }
+.badge-fk   { background: var(--fk-bg); color: var(--fk); }
+.badge-type { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+.badge-enum { background: rgba(74,124,89,0.13); color: #4A7C59; }
+.badge-null { background: transparent; color: var(--muted); opacity: 0.55; border: 1px solid var(--border); }
+
+/* ── Enums section ──────────────────────────────────────────────────── */
+.section-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.enums-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 56px;
+}
+.enum-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  min-width: 180px;
+}
+.enum-name {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+.enum-values { display: flex; flex-wrap: wrap; gap: 5px; }
+.enum-val {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 7px;
+  color: var(--muted);
+}
+
+/* ── Relations ──────────────────────────────────────────────────────── */
+.relations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 8px;
+}
+.relation-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-x: auto;
+}
+.rel-table  { color: var(--text); font-weight: 600; white-space: nowrap; }
+.rel-col    { color: var(--fk); white-space: nowrap; }
+.rel-arrow  { color: var(--muted); flex-shrink: 0; }
+.rel-note   { color: var(--muted); font-size: 9px; letter-spacing: 0.4px; white-space: nowrap; }
+.rel-optional { opacity: 0.6; font-style: italic; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<header class="header">
+  <div class="header-left">
+    <span class="logo">Meridiano</span>
+    <h1 class="title">Database Schema</h1>
+  </div>
+  <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+    <span class="subtitle">8 tablas · Supabase / PostgreSQL</span>
+    <button class="theme-btn" onclick="toggleTheme()">Toggle theme</button>
+  </div>
+</header>
+
+<!-- ── Legend ─────────────────────────────────────────── -->
+<div class="legend">
+  <div class="legend-item"><span class="dot dot-pk"></span> Primary key</div>
+  <div class="legend-item"><span class="dot dot-fk"></span> Foreign key</div>
+  <div class="legend-item"><span class="dot dot-col"></span> Column</div>
+  <div class="legend-item" style="margin-left:4px;">
+    <span class="badge badge-null" style="opacity:1;">null</span> Nullable
+  </div>
+</div>
+
+<!-- ── Table grid ──────────────────────────────────────── -->
+<div class="grid">
+
+  <!-- profiles -->
+  <div class="card">
+    <div class="card-header">
+      <span class="table-name">profiles</span>
+      <span class="row-count">extends auth.users</span>
+    </div>
+    <div class="col-list">
+      <div class="col-row">
+        <span class="dot dot-pk col-dot"></span>
+        <span class="col-name">id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">full_name</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">avatar_url</span>
+        <div class="col-badges"><span class="badge badge-type">text</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">created_at</span>
+        <div class="col-badges"><span class="badge badge-type">timestamptz</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- projects -->
+  <div class="card">
+    <div class="card-header">
+      <span class="table-name">projects</span>
+    </div>
+    <div class="col-list">
+      <div class="col-row">
+        <span class="dot dot-pk col-dot"></span>
+        <span class="col-name">id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">name</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">image_url</span>
+        <div class="col-badges"><span class="badge badge-type">text</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">created_by</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">created_at</span>
+        <div class="col-badges"><span class="badge badge-type">timestamptz</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- project_members -->
+  <div class="card">
+    <div class="card-header">
+      <span class="table-name">project_members</span>
+      <span class="row-count">junction</span>
+    </div>
+    <div class="col-list">
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">project_id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">user_id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">role</span>
+        <div class="col-badges"><span class="badge badge-enum">enum</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">joined_at</span>
+        <div class="col-badges"><span class="badge badge-type">timestamptz</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- obras -->
+  <div class="card">
+    <div class="card-header">
+      <span class="table-name">obras</span>
+    </div>
+    <div class="col-list">
+      <div class="col-row">
+        <span class="dot dot-pk col-dot"></span>
+        <span class="col-name">id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">project_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">code</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">name</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">contractor</span>
+        <div class="col-badges"><span class="badge badge-type">text</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">status</span>
+        <div class="col-badges"><span class="badge badge-enum">enum</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">start_date</span>
+        <div class="col-badges"><span class="badge badge-type">date</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">end_date</span>
+        <div class="col-badges"><span class="badge badge-type">date</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">created_at</span>
+        <div class="col-badges"><span class="badge badge-type">timestamptz</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- reports -->
+  <div class="card">
+    <div class="card-header">
+      <span class="table-name">reports</span>
+    </div>
+    <div class="col-list">
+      <div class="col-row">
+        <span class="dot dot-pk col-dot"></span>
+        <span class="col-name">id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">project_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">obra_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">created_by</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">type</span>
+        <div class="col-badges"><span class="badge badge-enum">enum</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">mode</span>
+        <div class="col-badges"><span class="badge badge-enum">enum</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">note</span>
+        <div class="col-badges"><span class="badge badge-type">text</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">status</span>
+        <div class="col-badges"><span class="badge badge-enum">enum</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">transcription</span>
+        <div class="col-badges"><span class="badge badge-type">text</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">ai_summary</span>
+        <div class="col-badges"><span class="badge badge-type">text</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">created_at</span>
+        <div class="col-badges"><span class="badge badge-type">timestamptz</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- report_frames -->
+  <div class="card">
+    <div class="card-header">
+      <span class="table-name">report_frames</span>
+    </div>
+    <div class="col-list">
+      <div class="col-row">
+        <span class="dot dot-pk col-dot"></span>
+        <span class="col-name">id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">report_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">storage_path</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">timestamp_sec</span>
+        <div class="col-badges"><span class="badge badge-type">integer</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">visual_description</span>
+        <div class="col-badges"><span class="badge badge-type">text</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">order_index</span>
+        <div class="col-badges"><span class="badge badge-type">integer</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- pending_items -->
+  <div class="card">
+    <div class="card-header">
+      <span class="table-name">pending_items</span>
+    </div>
+    <div class="col-list">
+      <div class="col-row">
+        <span class="dot dot-pk col-dot"></span>
+        <span class="col-name">id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">report_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">frame_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">project_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">obra_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">description</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">trade</span>
+        <div class="col-badges"><span class="badge badge-type">text</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">status</span>
+        <div class="col-badges"><span class="badge badge-enum">enum</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">source</span>
+        <div class="col-badges"><span class="badge badge-enum">enum</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">resolved_by</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row nullable">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">resolved_at</span>
+        <div class="col-badges"><span class="badge badge-type">timestamptz</span><span class="badge badge-null">null</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">created_at</span>
+        <div class="col-badges"><span class="badge badge-type">timestamptz</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- planos -->
+  <div class="card">
+    <div class="card-header">
+      <span class="table-name">planos</span>
+    </div>
+    <div class="col-list">
+      <div class="col-row">
+        <span class="dot dot-pk col-dot"></span>
+        <span class="col-name">id</span>
+        <div class="col-badges"><span class="badge badge-pk">PK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">project_id</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">name</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">type</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">storage_path</span>
+        <div class="col-badges"><span class="badge badge-type">text</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-fk col-dot"></span>
+        <span class="col-name">uploaded_by</span>
+        <div class="col-badges"><span class="badge badge-fk">FK</span><span class="badge badge-type">uuid</span></div>
+      </div>
+      <div class="col-row">
+        <span class="dot dot-col col-dot"></span>
+        <span class="col-name">created_at</span>
+        <div class="col-badges"><span class="badge badge-type">timestamptz</span></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /grid -->
+
+<!-- ── Enums ───────────────────────────────────────────── -->
+<p class="section-title">Enumeraciones</p>
+<div class="enums-grid">
+  <div class="enum-card">
+    <div class="enum-name">member_role</div>
+    <div class="enum-values">
+      <span class="enum-val">owner</span>
+      <span class="enum-val">admin</span>
+      <span class="enum-val">member</span>
+      <span class="enum-val">viewer</span>
+    </div>
+  </div>
+  <div class="enum-card">
+    <div class="enum-name">obra_status</div>
+    <div class="enum-values">
+      <span class="enum-val">sin_iniciar</span>
+      <span class="enum-val">en_curso</span>
+      <span class="enum-val">completada</span>
+    </div>
+  </div>
+  <div class="enum-card">
+    <div class="enum-name">report_type</div>
+    <div class="enum-values">
+      <span class="enum-val">contratistas</span>
+      <span class="enum-val">oficina</span>
+    </div>
+  </div>
+  <div class="enum-card">
+    <div class="enum-name">report_mode</div>
+    <div class="enum-values">
+      <span class="enum-val">video</span>
+      <span class="enum-val">foto</span>
+    </div>
+  </div>
+  <div class="enum-card">
+    <div class="enum-name">report_status</div>
+    <div class="enum-values">
+      <span class="enum-val">processing</span>
+      <span class="enum-val">completed</span>
+      <span class="enum-val">failed</span>
+    </div>
+  </div>
+  <div class="enum-card">
+    <div class="enum-name">pending_status</div>
+    <div class="enum-values">
+      <span class="enum-val">pendiente</span>
+      <span class="enum-val">en_revision</span>
+      <span class="enum-val">resuelto</span>
+    </div>
+  </div>
+  <div class="enum-card">
+    <div class="enum-name">pending_source</div>
+    <div class="enum-values">
+      <span class="enum-val">ai</span>
+      <span class="enum-val">manual</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── Relations ──────────────────────────────────────── -->
+<p class="section-title">Relaciones</p>
+<div class="relations-grid">
+  <div class="relation-row"><span class="rel-table">profiles</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">projects</span><span class="rel-col">.created_by</span></div>
+  <div class="relation-row"><span class="rel-table">projects</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">project_members</span><span class="rel-col">.project_id</span></div>
+  <div class="relation-row"><span class="rel-table">profiles</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">project_members</span><span class="rel-col">.user_id</span></div>
+  <div class="relation-row"><span class="rel-table">projects</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">obras</span><span class="rel-col">.project_id</span></div>
+  <div class="relation-row"><span class="rel-table">projects</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">reports</span><span class="rel-col">.project_id</span></div>
+  <div class="relation-row"><span class="rel-table">obras</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">reports</span><span class="rel-col">.obra_id</span></div>
+  <div class="relation-row"><span class="rel-table">profiles</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">reports</span><span class="rel-col">.created_by</span></div>
+  <div class="relation-row"><span class="rel-table">reports</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">report_frames</span><span class="rel-col">.report_id</span></div>
+  <div class="relation-row"><span class="rel-table">reports</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">pending_items</span><span class="rel-col">.report_id</span><span class="rel-note rel-optional">nullable</span></div>
+  <div class="relation-row"><span class="rel-table">report_frames</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">pending_items</span><span class="rel-col">.frame_id</span><span class="rel-note rel-optional">nullable</span></div>
+  <div class="relation-row"><span class="rel-table">projects</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">pending_items</span><span class="rel-col">.project_id</span></div>
+  <div class="relation-row"><span class="rel-table">obras</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">pending_items</span><span class="rel-col">.obra_id</span></div>
+  <div class="relation-row"><span class="rel-table">profiles</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">pending_items</span><span class="rel-col">.resolved_by</span><span class="rel-note rel-optional">nullable</span></div>
+  <div class="relation-row"><span class="rel-table">projects</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">planos</span><span class="rel-col">.project_id</span></div>
+  <div class="relation-row"><span class="rel-table">profiles</span><span class="rel-col">.id</span><span class="rel-arrow">←</span><span class="rel-table">planos</span><span class="rel-col">.uploaded_by</span></div>
+</div>
+
+<script>
+function toggleTheme() {
+  const root = document.documentElement;
+  const current = root.getAttribute('data-theme');
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  if (!current) {
+    root.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  } else if (current === 'dark') {
+    root.setAttribute('data-theme', 'light');
+  } else {
+    root.setAttribute('data-theme', 'dark');
+  }
+}
+</script>
+</body>
+</html>
