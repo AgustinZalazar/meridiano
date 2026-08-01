@@ -13,7 +13,7 @@ const processing = new Set<string>();
 
 // ── Polling loop ────────────────────────────────────────────────────────────
 async function pollPendingReports() {
-  const { data: reports } = await supabase
+  const { data: reports, error } = await supabase
     .from('reports')
     .select('id')
     .eq('status', 'processing')
@@ -21,7 +21,9 @@ async function pollPendingReports() {
     .not('video_path', 'is', null)
     .limit(5);
 
+  if (error) { console.error('[poll] Supabase error:', error.message); return; }
   if (!reports?.length) return;
+  console.log(`[poll] Found ${reports.length} report(s) to process`);
 
   for (const { id } of reports) {
     if (processing.has(id)) continue;
