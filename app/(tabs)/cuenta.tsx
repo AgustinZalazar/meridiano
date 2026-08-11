@@ -4,7 +4,6 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useProfile } from '../../lib/use-profile';
@@ -115,6 +114,7 @@ export default function CuentaScreen() {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.85,
+      base64: true,
     });
 
     if (result.canceled || !result.assets[0]) return;
@@ -122,17 +122,13 @@ export default function CuentaScreen() {
     setLogoUploading(true);
     try {
       const asset = result.assets[0];
-      const ext = asset.uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+      if (!asset.base64) throw new Error('No se pudo leer la imagen');
+      const ext = (asset.uri.split('.').pop()?.toLowerCase() ?? 'jpg').replace(/\?.*$/, '');
       const path = `${studio.id}/logo.${ext}`;
 
-      const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const binaryString = atob(base64);
+      const binaryString = atob(asset.base64);
       const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
+      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
 
       const { error: uploadError } = await supabase.storage
         .from('studio-logos')
@@ -144,10 +140,13 @@ export default function CuentaScreen() {
         .from('studio-logos')
         .getPublicUrl(path);
 
-      await supabase.from('studios').update({ logo_url: publicUrl }).eq('id', studio.id);
+      // Bust cache so the Image component re-fetches even if the path is the same
+      await supabase.from('studios').update({ logo_url: `${publicUrl}?v=${Date.now()}` }).eq('id', studio.id);
       await refetchStudio();
-    } catch {
-      Alert.alert('Error', 'No se pudo subir el logo. Intentá de nuevo.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[logo upload]', msg);
+      Alert.alert('Error', `No se pudo subir el logo.\n${msg}`);
     } finally {
       setLogoUploading(false);
     }

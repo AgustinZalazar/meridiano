@@ -125,6 +125,8 @@ export default function ProcesandoScreen() {
 
         // 1. Upload video to processing bucket
         const ext  = videoUri!.split('.').pop()?.toLowerCase() ?? 'mp4';
+        const ALLOWED_VIDEO_EXTS = ['mp4', 'mov', 'avi', 'mkv', '3gp', 'webm'];
+        if (!ALLOWED_VIDEO_EXTS.includes(ext)) throw new Error('Tipo de video no permitido.');
         const path = `${studio!.id}/${Date.now()}.${ext}`;
         const url  = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${path}`;
 

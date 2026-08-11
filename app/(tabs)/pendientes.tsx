@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -86,6 +86,16 @@ export default function PendientesScreen() {
   const [activeType, setActiveType] = useState<ReportType>('contratistas');
   const [items, setItems] = useState<DbPending[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterVisible, setFilterVisible] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<PendingStatus | 'all'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'ai' | 'manual'>('all');
+
+  const hasActiveFilters = statusFilter !== 'all' || sourceFilter !== 'all';
+
+  function resetFilters() {
+    setStatusFilter('all');
+    setSourceFilter('all');
+  }
 
   const fetchPendientes = useCallback(async () => {
     setLoading(true);
@@ -99,10 +109,12 @@ export default function PendientesScreen() {
 
   useEffect(() => { fetchPendientes(); }, [fetchPendientes]);
 
-  // Items without a linked report (manual) show in both tabs
   const filtered = items.filter((p) => {
     const type = p.reports?.type;
-    return !type || type === activeType;
+    if (type && type !== activeType) return false;
+    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+    if (sourceFilter !== 'all' && p.source !== sourceFilter) return false;
+    return true;
   });
 
   const pendienteCount = filtered.filter((p) => p.status === 'pendiente').length;
@@ -115,8 +127,9 @@ export default function PendientesScreen() {
           <Text style={styles.eyebrow}>PENDIENTES</Text>
           <Text style={styles.heading}>{pendienteCount} sin resolver</Text>
         </View>
-        <TouchableOpacity style={styles.circleBtn} activeOpacity={0.8}>
-          <Feather name="filter" size={16} color={colors.crema} />
+        <TouchableOpacity style={styles.circleBtn} onPress={() => setFilterVisible(true)} activeOpacity={0.8}>
+          <Feather name="filter" size={16} color={hasActiveFilters ? colors.arena : colors.crema} />
+          {hasActiveFilters && <View style={styles.filterDot} />}
         </TouchableOpacity>
       </View>
 
@@ -169,6 +182,56 @@ export default function PendientesScreen() {
           ))
         )}
       </ScrollView>
+      {/* ── Filter sheet ──────────────────────────────────────── */}
+      <Modal visible={filterVisible} animationType="slide" transparent onRequestClose={() => setFilterVisible(false)}>
+        <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setFilterVisible(false)} />
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+
+          <View style={styles.sheetTitleRow}>
+            <Text style={styles.sheetTitle}>Filtros</Text>
+            {hasActiveFilters && (
+              <TouchableOpacity onPress={resetFilters} activeOpacity={0.7}>
+                <Text style={styles.sheetReset}>Limpiar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <Text style={styles.sheetGroupLabel}>ESTADO</Text>
+          <View style={styles.chipRow}>
+            {([['all', 'Todos'], ['pendiente', 'Pendiente'], ['en_revision', 'En revisión'], ['resuelto', 'Resuelto']] as const).map(([val, label]) => (
+              <TouchableOpacity
+                key={val}
+                style={[styles.filterChip, statusFilter === val && styles.filterChipActive]}
+                onPress={() => setStatusFilter(val)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterChipText, statusFilter === val && styles.filterChipTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.sheetGroupLabel}>FUENTE</Text>
+          <View style={styles.chipRow}>
+            {([['all', 'Todos'], ['ai', 'IA'], ['manual', 'Manual']] as const).map(([val, label]) => (
+              <TouchableOpacity
+                key={val}
+                style={[styles.filterChip, sourceFilter === val && styles.filterChipActive]}
+                onPress={() => setSourceFilter(val)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.filterChipText, sourceFilter === val && styles.filterChipTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity style={styles.sheetApplyBtn} onPress={() => setFilterVisible(false)} activeOpacity={0.85}>
+            <Text style={styles.sheetApplyText}>
+              Ver {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -241,4 +304,39 @@ const styles = StyleSheet.create({
 
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
+
+  filterDot: {
+    position: 'absolute', top: 9, right: 9,
+    width: 7, height: 7, borderRadius: 4,
+    backgroundColor: colors.arena, borderWidth: 1.5, borderColor: colors.tinta,
+  },
+
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  sheet: {
+    backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: spacing.xl, paddingBottom: 36, paddingTop: 12, gap: spacing.lg,
+  },
+  sheetHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 4,
+  },
+  sheetTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sheetTitle: { fontFamily: fonts.archivo.bold, fontSize: 18, color: colors.crema, letterSpacing: -0.3 },
+  sheetReset: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.arena },
+  sheetGroupLabel: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700', marginBottom: -spacing.sm,
+  },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  filterChip: {
+    height: 34, paddingHorizontal: 16, borderRadius: 17,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+  },
+  filterChipActive: { backgroundColor: colors.crema },
+  filterChipText: { fontFamily: fonts.archivo.bold, fontSize: 12.5, color: colors.crema },
+  filterChipTextActive: { color: '#FFFFFF' },
+  sheetApplyBtn: {
+    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    alignItems: 'center', justifyContent: 'center', marginTop: spacing.xs,
+  },
+  sheetApplyText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
 });

@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator, TextInput } from 'react-native';
 
 const LOGO_SRC = require('../../assets/icon.png');
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -61,6 +61,19 @@ export default function ProyectosScreen() {
   const [projects, setProjects] = useState<DbProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('Todos');
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
+
+  function openSearch() {
+    setSearchVisible(true);
+    setTimeout(() => searchInputRef.current?.focus(), 50);
+  }
+
+  function closeSearch() {
+    setSearchVisible(false);
+    setSearchQuery('');
+  }
 
   useFocusEffect(useCallback(() => { refetchStudio(); }, [refetchStudio]));
 
@@ -77,37 +90,63 @@ export default function ProyectosScreen() {
 
   useFocusEffect(fetchProjects);
 
-  const filtered = projects.filter((p) => {
-    if (filter === 'En curso') return p.rubros.some((r) => r.status === 'en_curso');
-    if (filter === 'Pausado') return !p.rubros.some((r) => r.status === 'en_curso');
-    return true;
-  });
+  const filtered = projects
+    .filter((p) => {
+      if (filter === 'En curso') return p.rubros.some((r) => r.status === 'en_curso');
+      if (filter === 'Pausado') return !p.rubros.some((r) => r.status === 'en_curso');
+      return true;
+    })
+    .filter((p) =>
+      !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+    );
 
   const brandLabel = studio?.name ?? profile?.full_name ?? '';
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>
       <View style={styles.topBar}>
-        <View style={styles.brand}>
-          <Image source={LOGO_SRC} style={styles.brandLogo} resizeMode="contain" />
-          {brandLabel ? (
-            <Text style={styles.brandName}>{brandLabel}</Text>
-          ) : null}
-        </View>
-        <View style={styles.topBarRight}>
-          <TouchableOpacity style={styles.circleBtn} activeOpacity={0.8}>
-            <Feather name="search" size={17} color={colors.crema} />
-          </TouchableOpacity>
-          {isAdmin && (
-            <TouchableOpacity
-              style={[styles.circleBtn, styles.circleBtnAccent]}
-              onPress={() => router.push('/proyecto/nueva')}
-              activeOpacity={0.85}
-            >
-              <Feather name="plus" size={18} color="#FFFFFF" />
+        {searchVisible ? (
+          <View style={styles.searchBar}>
+            <Feather name="search" size={15} color={colors.gris} />
+            <TextInput
+              ref={searchInputRef}
+              style={styles.searchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Buscar proyecto..."
+              placeholderTextColor={colors.faint}
+              selectionColor={colors.arena}
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            <TouchableOpacity onPress={closeSearch} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="x" size={16} color={colors.gris} />
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+        ) : (
+          <>
+            <View style={styles.brand}>
+              <Image source={LOGO_SRC} style={styles.brandLogo} resizeMode="contain" />
+              {brandLabel ? (
+                <Text style={styles.brandName}>{brandLabel}</Text>
+              ) : null}
+            </View>
+            <View style={styles.topBarRight}>
+              <TouchableOpacity style={styles.circleBtn} onPress={openSearch} activeOpacity={0.8}>
+                <Feather name="search" size={17} color={colors.crema} />
+              </TouchableOpacity>
+              {isAdmin && (
+                <TouchableOpacity
+                  style={[styles.circleBtn, styles.circleBtnAccent]}
+                  onPress={() => router.push('/proyecto/nueva')}
+                  activeOpacity={0.85}
+                >
+                  <Feather name="plus" size={18} color="#FFFFFF" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </>
+        )}
       </View>
 
       <View style={styles.titleBlock}>
@@ -141,11 +180,13 @@ export default function ProyectosScreen() {
           <ActivityIndicator color={colors.crema} style={styles.loader} />
         ) : filtered.length === 0 ? (
           <View style={styles.emptyState}>
-            <Feather name="layers" size={28} color={colors.faint} />
+            <Feather name={searchQuery.trim() ? 'search' : 'layers'} size={28} color={colors.faint} />
             <Text style={styles.emptyText}>
-              {filter === 'Todos' ? 'No tenés proyectos aún' : `No hay proyectos "${filter}"`}
+              {searchQuery.trim()
+                ? `Sin resultados para "${searchQuery.trim()}"`
+                : filter === 'Todos' ? 'No tenés proyectos aún' : `No hay proyectos "${filter}"`}
             </Text>
-            {filter === 'Todos' && isAdmin && (
+            {filter === 'Todos' && !searchQuery.trim() && isAdmin && (
               <TouchableOpacity
                 style={styles.emptyBtn}
                 onPress={() => router.push('/proyecto/nueva')}
@@ -380,6 +421,27 @@ const styles = StyleSheet.create({
   },
   pillTextActive: {
     color: '#FFFFFF',
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.panel,
+    paddingHorizontal: 14,
+    shadowColor: '#12151A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 14,
+    elevation: 4,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 14,
+    color: colors.crema,
   },
   fab: {
     position: 'absolute',

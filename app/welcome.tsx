@@ -8,8 +8,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts } from '../constants/theme';
+import { useAuth } from '../lib/auth-context';
 
-export const ONBOARDING_KEY = 'meridiano_onboarding_v1';
+export const onboardingKey = (userId: string) => `meridiano_onboarding_v1_${userId}`;
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CARD_W = Math.min(SCREEN_W - 72, 300);
@@ -350,6 +351,7 @@ function Dot({ active, accent }: { active: boolean; accent: string }) {
 export default function WelcomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { session } = useAuth();
   const flatListRef = useRef<FlatList>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -365,7 +367,7 @@ export default function WelcomeScreen() {
   const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
 
   async function finish() {
-    await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+    await AsyncStorage.setItem(onboardingKey(session?.user.id ?? 'anonymous'), 'true');
     router.replace('/(tabs)');
   }
 

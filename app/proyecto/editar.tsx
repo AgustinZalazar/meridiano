@@ -64,6 +64,11 @@ export default function EditarProyectoScreen() {
     let finalImageUrl: string | null = isRemoteImage ? imageUri : null;
     if (!isRemoteImage && imageUri && pickedBase64) {
       finalImageUrl = await uploadProjectImage(session.user.id, imageUri, pickedBase64);
+      if (!finalImageUrl) {
+        setLoading(false);
+        setError('No se pudo subir la imagen. Verificá tu conexión e intentá de nuevo.');
+        return;
+      }
     }
 
     const { error: dbError } = await supabase

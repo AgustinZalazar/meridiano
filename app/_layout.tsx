@@ -8,7 +8,7 @@ import { View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/auth-context';
-import { ONBOARDING_KEY } from './welcome';
+import { onboardingKey } from './welcome';
 
 function RootLayoutNav() {
   const { session, loading } = useAuth();
@@ -18,7 +18,7 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading) return;
 
-    AsyncStorage.getItem(ONBOARDING_KEY).then((v) => {
+    AsyncStorage.getItem(onboardingKey(session?.user.id ?? 'anonymous')).then((v) => {
       const onboardingSeen = v === 'true';
       const inAuth    = segments[0] === '(auth)';
       const inWelcome = segments[0] === 'welcome';

@@ -106,7 +106,6 @@ export default function OnboardingScreen() {
 
     await supabase.rpc('create_studio', {
       studio_name: studioName.trim(),
-      studio_plan: plan,
     });
 
     setLoading(false);

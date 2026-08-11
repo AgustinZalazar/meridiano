@@ -80,7 +80,7 @@ export async function processVideoReport(reportId: string): Promise<void> {
           language: 'es',
         });
         transcription = result.text;
-        console.log(`[${reportId}] Transcription: ${transcription.slice(0, 80)}...`);
+        console.log(`[${reportId}] Transcription done (${transcription.length} chars)`);
       } catch (e) {
         console.warn(`[${reportId}] Transcription failed:`, e);
       }
@@ -96,9 +96,14 @@ export async function processVideoReport(reportId: string): Promise<void> {
       const buf = fs.readFileSync(path.join(framesDir, file));
       const storagePath = `${reportId}/${file}`;
 
-      await supabase.storage
+      const { error: uploadErr } = await supabase.storage
         .from('report-frames')
         .upload(storagePath, buf, { contentType: 'image/jpeg', upsert: true });
+
+      if (uploadErr) {
+        console.error(`[${reportId}] Frame upload failed (${file}):`, uploadErr.message);
+        continue;
+      }
 
       frameBase64.push(buf.toString('base64'));
       frameDbRecords.push({ report_id: reportId, storage_path: storagePath, timestamp_sec: i * 5, order_index: i });

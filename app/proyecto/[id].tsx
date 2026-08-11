@@ -1,8 +1,10 @@
 import { useCallback, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, ListRenderItem } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, ListRenderItem, Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { ProjectPlaceholder } from '../../components/ProjectPlaceholder';
@@ -40,6 +42,17 @@ interface DbPendingItem {
   status: PendingStatus;
   reports: { type: ReportType } | null;
 }
+
+interface DbPlano {
+  id: string;
+  name: string;
+  type: string;
+  storage_path: string;
+  created_at: string;
+}
+
+const PLAN_TYPES = ['ARQUITECTURA', 'ESTRUCTURAL', 'INSTALACIONES', 'OTRO'] as const;
+const ALLOWED_PLAN_EXTS = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -155,9 +168,15 @@ export default function ProyectoScreen() {
   const [project, setProject] = useState<DbProject | null>(null);
   const [rubros, setRubros] = useState<DbRubro[]>([]);
   const [pendingItems, setPendingItems] = useState<DbPendingItem[]>([]);
+  const [planos, setPlanos] = useState<DbPlano[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('rubros');
   const [pendType, setPendType] = useState<ReportType>('contratistas');
+  const [planoSheet, setPlanoSheet] = useState(false);
+  const [planoName, setPlanoName] = useState('');
+  const [planoType, setPlanoType] = useState<typeof PLAN_TYPES[number]>('ARQUITECTURA');
+  const [pickedFile, setPickedFile] = useState<{ uri: string; name: string; mimeType: string } | null>(null);
+  const [uploadingPlano, setUploadingPlano] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -168,14 +187,76 @@ export default function ProyectoScreen() {
         supabase.from('projects').select('id, name, image_url, start_date, end_date').eq('id', projectId).single(),
         supabase.from('rubros').select('id, code, name, contractor, status, start_date, end_date').eq('project_id', projectId).order('created_at'),
         supabase.from('pending_items').select('id, description, rubro_id, trade, status, reports(type)').eq('project_id', projectId),
-      ]).then(([projRes, rubrosRes, pendRes]) => {
+        supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
+      ]).then(([projRes, rubrosRes, pendRes, planosRes]) => {
         if (projRes.data) setProject(projRes.data as DbProject);
         setRubros((rubrosRes.data as DbRubro[]) ?? []);
         setPendingItems((pendRes.data as DbPendingItem[]) ?? []);
+        setPlanos((planosRes.data as DbPlano[]) ?? []);
         setLoading(false);
       });
     }, [projectId])
   );
+
+  async function handlePickPlano() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'image/*'],
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.length) return;
+    const asset = result.assets[0];
+    const ext = asset.name.split('.').pop()?.toLowerCase() ?? '';
+    if (!ALLOWED_PLAN_EXTS.includes(ext)) {
+      Alert.alert('Tipo no permitido', 'Solo se aceptan archivos PDF, JPG, PNG o WebP.');
+      return;
+    }
+    setPlanoName(asset.name.replace(/\.[^.]+$/, ''));
+    setPickedFile({ uri: asset.uri, name: asset.name, mimeType: asset.mimeType ?? 'application/octet-stream' });
+    setPlanoSheet(true);
+  }
+
+  async function handleUploadPlano() {
+    if (!pickedFile || !planoName.trim()) return;
+    setUploadingPlano(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Sin sesión activa');
+
+      const ext = pickedFile.name.split('.').pop()?.toLowerCase() ?? 'pdf';
+      const storagePath = `${projectId}/${Date.now()}.${ext}`;
+
+      const base64 = await FileSystem.readAsStringAsync(pickedFile.uri, { encoding: FileSystem.EncodingType.Base64 });
+      const chars = atob(base64);
+      const bytes = new Uint8Array(chars.length);
+      for (let i = 0; i < chars.length; i++) bytes[i] = chars.charCodeAt(i);
+
+      const { error: uploadErr } = await supabase.storage
+        .from('planos')
+        .upload(storagePath, bytes.buffer, { contentType: pickedFile.mimeType, upsert: false });
+      if (uploadErr) throw new Error(`Error al subir: ${uploadErr.message}`);
+
+      const { error: insertErr } = await supabase.from('planos').insert({
+        project_id: projectId,
+        name: planoName.trim(),
+        type: planoType,
+        storage_path: storagePath,
+        uploaded_by: session.user.id,
+      });
+      if (insertErr) throw new Error(`Error al guardar: ${insertErr.message}`);
+
+      setPlanoSheet(false);
+      setPickedFile(null);
+      setPlanoName('');
+      setPlanoType('ARQUITECTURA');
+
+      const { data } = await supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false });
+      setPlanos((data as DbPlano[]) ?? []);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'No se pudo subir el plano.');
+    } finally {
+      setUploadingPlano(false);
+    }
+  }
 
   const rubroById = Object.fromEntries(rubros.map((r) => [r.id, r]));
 
@@ -381,9 +462,30 @@ export default function ProyectoScreen() {
 
       {activeTab === 'planos' && (
         <FlatList
-          data={[]}
-          keyExtractor={(item: never) => item}
-          renderItem={null}
+          data={planos}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.planoRow}>
+              <View style={styles.planoIconSlot}>
+                <Feather
+                  name={item.storage_path.match(/\.(jpg|jpeg|png|webp)$/i) ? 'image' : 'file-text'}
+                  size={18}
+                  color={colors.gris}
+                />
+              </View>
+              <View style={styles.planoInfo}>
+                <Text style={styles.planoName}>{item.name}</Text>
+                <View style={styles.planoMeta}>
+                  <View style={styles.planoTypeBadge}>
+                    <Text style={styles.planoTypeText}>{item.type}</Text>
+                  </View>
+                  <Text style={styles.planoDate}>
+                    {new Date(item.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
@@ -393,13 +495,65 @@ export default function ProyectoScreen() {
             </View>
           }
           ListFooterComponent={
-            <TouchableOpacity style={styles.addBtn} activeOpacity={0.85}>
-              <Feather name="upload" size={16} color={colors.crema} />
-              <Text style={styles.addBtnText}>Subir plano</Text>
+            <TouchableOpacity style={styles.addBtn} onPress={handlePickPlano} activeOpacity={0.85} disabled={uploadingPlano}>
+              {uploadingPlano
+                ? <ActivityIndicator color={colors.crema} size="small" />
+                : <><Feather name="upload" size={16} color={colors.crema} /><Text style={styles.addBtnText}>Subir plano</Text></>
+              }
             </TouchableOpacity>
           }
         />
       )}
+
+      {/* ── Modal nombre + tipo de plano ────────────────────── */}
+      <Modal visible={planoSheet} animationType="slide" transparent onRequestClose={() => setPlanoSheet(false)}>
+        <KeyboardAvoidingView style={styles.sheetOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setPlanoSheet(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Nuevo plano</Text>
+
+            <Text style={styles.sheetFieldLabel}>NOMBRE</Text>
+            <View style={styles.sheetInputWrap}>
+              <TextInput
+                style={styles.sheetInput}
+                value={planoName}
+                onChangeText={setPlanoName}
+                placeholder="Ej: Planta Baja"
+                placeholderTextColor={colors.faint}
+                selectionColor={colors.arena}
+                autoFocus
+              />
+            </View>
+
+            <Text style={styles.sheetFieldLabel}>TIPO</Text>
+            <View style={styles.typeRow}>
+              {PLAN_TYPES.map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.typeChipBtn, planoType === t && styles.typeChipBtnActive]}
+                  onPress={() => setPlanoType(t)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.typeChipBtnText, planoType === t && styles.typeChipBtnTextActive]}>{t}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.sheetBtn, (!planoName.trim() || uploadingPlano) && styles.sheetBtnDisabled]}
+              onPress={handleUploadPlano}
+              activeOpacity={0.85}
+              disabled={!planoName.trim() || uploadingPlano}
+            >
+              {uploadingPlano
+                ? <ActivityIndicator color="#FFF" size="small" />
+                : <><Feather name="upload" size={15} color="#FFF" /><Text style={styles.sheetBtnText}>Subir plano</Text></>
+              }
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -503,6 +657,56 @@ const styles = StyleSheet.create({
     gap: spacing.sm, marginTop: spacing.xs,
   },
   addBtnText: { fontFamily: fonts.archivo.bold, fontSize: 14.5, color: colors.crema },
+
+  planoRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: colors.panel, borderRadius: 18, padding: 14,
+    shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 2,
+  },
+  planoIconSlot: {
+    width: 44, height: 44, borderRadius: 12, backgroundColor: colors.chip,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  planoInfo: { flex: 1, gap: 5 },
+  planoName: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema },
+  planoMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  planoTypeBadge: {
+    height: 18, paddingHorizontal: 7, borderRadius: 9, backgroundColor: colors.chip,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  planoTypeText: { fontFamily: fonts.mono.regular, fontSize: 8, letterSpacing: 0.4, color: colors.gris },
+  planoDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3 },
+
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
+  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  sheet: {
+    backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: spacing.xl, paddingBottom: 36, paddingTop: 12, gap: spacing.lg,
+  },
+  sheetHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 4,
+  },
+  sheetTitle: { fontFamily: fonts.archivo.bold, fontSize: 18, color: colors.crema, letterSpacing: -0.3 },
+  sheetFieldLabel: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700', marginBottom: -spacing.sm,
+  },
+  sheetInputWrap: { backgroundColor: colors.chip, borderRadius: 18, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  sheetInput: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.crema, height: 42 },
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  typeChipBtn: {
+    height: 32, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.chip,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  typeChipBtnActive: { backgroundColor: colors.crema },
+  typeChipBtnText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: colors.crema },
+  typeChipBtnTextActive: { color: '#FFFFFF' },
+  sheetBtn: {
+    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+  },
+  sheetBtnDisabled: { opacity: 0.35 },
+  sheetBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
 
   pendCard: {
     flexDirection: 'row', gap: 12, backgroundColor: colors.panel, borderRadius: 18, padding: 13,

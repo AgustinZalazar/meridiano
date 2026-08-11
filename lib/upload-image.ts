@@ -7,12 +7,18 @@ function decodeBase64(base64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+const ALLOWED_IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp'];
+
 export async function uploadProjectImage(
   userId: string,
   localUri: string,
   base64: string,
 ): Promise<string | null> {
   const ext = localUri.split('.').pop()?.toLowerCase() ?? 'jpg';
+  if (!ALLOWED_IMAGE_EXTS.includes(ext)) {
+    console.error('[uploadProjectImage] tipo de archivo no permitido:', ext);
+    return null;
+  }
   const filename = `${userId}/${Date.now()}.${ext}`;
   const contentType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
 
@@ -20,7 +26,10 @@ export async function uploadProjectImage(
     .from('project-images')
     .upload(filename, decodeBase64(base64), { contentType, upsert: true });
 
-  if (error) return null;
+  if (error) {
+    console.error('[uploadProjectImage]', error.message);
+    return null;
+  }
 
   const { data } = supabase.storage.from('project-images').getPublicUrl(filename);
   return data.publicUrl;

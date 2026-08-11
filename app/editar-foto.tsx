@@ -347,6 +347,7 @@ export default function EditarFotoScreen() {
                       placeholderTextColor={colors.faint}
                       onFocus={() => setSelectedId(m.id)}
                       selectionColor={colors.arena}
+                      underlineColorAndroid="transparent"
                       multiline
                     />
                   </View>
@@ -373,6 +374,7 @@ export default function EditarFotoScreen() {
                 placeholder="Agregá una nota general sobre la foto…"
                 placeholderTextColor={colors.faint}
                 selectionColor={colors.arena}
+                underlineColorAndroid="transparent"
                 multiline
                 numberOfLines={3}
               />
@@ -507,7 +509,7 @@ const styles = StyleSheet.create({
   markerBadgeSelected: { backgroundColor: colors.arena },
   markerBadgeText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: '#FFFFFF' },
   markerInputWrap: { flex: 1 },
-  inputText: { fontFamily: fonts.archivo.semibold, fontSize: 13.5, color: colors.crema, lineHeight: 20, minHeight: 36 },
+  inputText: { fontFamily: fonts.archivo.semibold, fontSize: 13.5, color: colors.crema, lineHeight: 20, minHeight: 36, backgroundColor: 'transparent' },
 
   commentBlock: { paddingHorizontal: spacing.xl, gap: spacing.sm },
   commentField: {
@@ -516,7 +518,7 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     fontFamily: fonts.archivo.semibold, fontSize: 13.5, color: colors.crema,
-    lineHeight: 20, minHeight: 60,
+    lineHeight: 20, minHeight: 60, backgroundColor: 'transparent',
   },
 
   ctaBlock: { paddingHorizontal: spacing.xl, gap: spacing.sm },

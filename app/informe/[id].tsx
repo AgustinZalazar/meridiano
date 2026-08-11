@@ -1,99 +1,74 @@
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
+  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
+} from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { useStudio } from '../../lib/use-studio';
+import { supabase } from '../../lib/supabase';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Report {
+  id: string;
+  type: string;
+  mode: string;
+  note: string | null;
+  transcription: string | null;
+  ai_summary: string | null;
+  status: string;
+  created_at: string;
+  projects: { name: string } | null;
+  rubros: { name: string; code?: string } | null;
+}
 
 interface PendingItem {
+  id: string;
   description: string;
-  trade?: string;
-  frameNote?: string;
-  imageUri?: string;
+  trade: string | null;
+  status: string;
+  source: string;
 }
 
-interface Sector {
-  name: string;
-  items: PendingItem[];
+interface ReportFrame {
+  id: string;
+  storage_path: string;
+  timestamp_sec: number;
+  order_index: number;
+  signedUrl?: string;
 }
 
-const MOCK_REPORT = {
-  date: '22 JUL 2026',
-  rubro: 'RB-002 · Instalaciones Eléctricas',
-  project: 'Edificio Costanera Norte',
-  duration: '4:32 min · 54 frames',
-  sectors: [
-    {
-      name: 'Hall de Entrada — PB',
-      items: [
-        {
-          description: 'Cableado del tablero principal sin terminar, faltan conectar 3 circuitos identificados con cinta azul.',
-          trade: 'ELECTRICISTA',
-          frameNote: 'Frame 4 · t=0:18',
-          imageUri: 'https://picsum.photos/id/1048/128/104',
-        },
-        {
-          description: 'Luminaria central pendiente de instalación, el soporte está colocado pero la campana no llegó a obra.',
-          frameNote: 'Frame 7 · t=0:31',
-          imageUri: 'https://picsum.photos/id/1005/128/104',
-        },
-      ],
-    },
-    {
-      name: 'Piso 3 — Depto 3A',
-      items: [
-        {
-          description: 'Tomacorrientes del living sin cubrir, hay 4 cajas abiertas que necesitan tapas.',
-          trade: 'ELECTRICISTA',
-          frameNote: 'Frame 18 · t=1:22',
-          imageUri: 'https://picsum.photos/id/366/128/104',
-        },
-        {
-          description: 'Interruptor de la habitación principal colocado al revés, la posición de encendido es hacia abajo.',
-          frameNote: 'Frame 23 · t=1:48',
-          imageUri: 'https://picsum.photos/id/1036/128/104',
-        },
-        {
-          description: 'Falta pasar el cable del split en la habitación secundaria, el ducto está listo pero sin cable.',
-          trade: 'ELECTRICISTA',
-          frameNote: 'Frame 27 · t=2:05',
-          imageUri: 'https://picsum.photos/id/1053/128/104',
-        },
-      ],
-    },
-    {
-      name: 'Piso 3 — Depto 3B',
-      items: [
-        {
-          description: 'Caja de pase en el pasillo sin tapón, riesgo de ingreso de roedores.',
-          frameNote: 'Frame 31 · t=2:24',
-          imageUri: 'https://picsum.photos/id/1071/128/104',
-        },
-      ],
-    },
-    {
-      name: 'Azotea',
-      items: [
-        {
-          description: 'Tablero de medidores sin cerrar, acceso libre a bornes con tensión.',
-          trade: 'ELECTRICISTA',
-          frameNote: 'Frame 47 · t=3:42',
-          imageUri: 'https://picsum.photos/id/42/128/104',
-        },
-        {
-          description: 'Pararrayos pendiente de conexión a tierra.',
-          frameNote: 'Frame 51 · t=3:58',
-          imageUri: 'https://picsum.photos/id/1074/128/104',
-        },
-      ],
-    },
-  ] as Sector[],
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+}
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function groupByTrade(items: PendingItem[]): { trade: string; items: PendingItem[] }[] {
+  const map = new Map<string, PendingItem[]>();
+  for (const item of items) {
+    const key = item.trade ?? 'General';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(item);
+  }
+  return Array.from(map.entries()).map(([trade, items]) => ({ trade, items }));
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Chip({ label }: { label: string }) {
   return (
     <View style={styles.chip}>
-      <Text style={styles.chipText}>{label}</Text>
+      <Text style={styles.chipText}>{label.toUpperCase()}</Text>
     </View>
   );
 }
@@ -101,47 +76,226 @@ function Chip({ label }: { label: string }) {
 function ItemCard({ item }: { item: PendingItem }) {
   return (
     <View style={styles.itemCard}>
-      <View style={styles.imageSlot}>
-        {item.imageUri && (
-          <Image source={{ uri: item.imageUri }} style={styles.slotImage} />
-        )}
-      </View>
+      <View style={styles.itemDot} />
       <View style={styles.itemBody}>
         <Text style={styles.itemDescription}>{item.description}</Text>
-        <View style={styles.itemMeta}>
-          {item.trade && <Chip label={item.trade} />}
-          {item.frameNote && (
-            <Text style={styles.frameNote}>{item.frameNote}</Text>
-          )}
-        </View>
+        {item.trade && (
+          <View style={{ marginTop: 4 }}>
+            <Chip label={item.trade} />
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
-function SectorBlock({ sector, showAll }: { sector: Sector; showAll: boolean }) {
-  const visible = showAll ? sector.items : sector.items.slice(0, 2);
-
+function TradeGroup({ trade, items }: { trade: string; items: PendingItem[] }) {
   return (
     <View style={styles.sectorBlock}>
       <View style={styles.sectorHeader}>
-        <Text style={styles.sectorName}>{sector.name}</Text>
-        <Text style={styles.sectorCount}>{sector.items.length}</Text>
+        <Text style={styles.sectorName}>{trade}</Text>
+        <Text style={styles.sectorCount}>{items.length}</Text>
       </View>
-      {visible.map((item, i) => (
-        <ItemCard key={i} item={item} />
+      {items.map((item) => (
+        <ItemCard key={item.id} item={item} />
       ))}
     </View>
   );
 }
 
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
 export default function InformeScreen() {
   const router = useRouter();
-  const { type } = useLocalSearchParams<{ type?: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const { studio } = useStudio();
-  const isOficina = type === 'oficina';
+
+  const [report, setReport] = useState<Report | null>(null);
+  const [items, setItems] = useState<PendingItem[]>([]);
+  const [frames, setFrames] = useState<ReportFrame[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [previewVisible, setPreviewVisible] = useState(false);
+  const [changeSheetVisible, setChangeSheetVisible] = useState(false);
+  const [changeRequest, setChangeRequest] = useState('');
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    if (!id || id === 'demo') { setLoading(false); return; }
+    fetchReport();
+  }, [id]);
+
+  async function fetchReport() {
+    setLoading(true);
+    const [reportRes, itemsRes, framesRes] = await Promise.all([
+      supabase.from('reports').select('id, type, mode, note, transcription, ai_summary, status, created_at, projects(name), rubros(name, code)').eq('id', id).single<Report>(),
+      supabase.from('pending_items').select('id, description, trade, status, source').eq('report_id', id).order('created_at'),
+      supabase.from('report_frames').select('id, storage_path, timestamp_sec, order_index').eq('report_id', id).order('order_index').limit(6),
+    ]);
+
+    if (reportRes.data) setReport(reportRes.data);
+    if (itemsRes.data) setItems(itemsRes.data);
+
+    if (framesRes.data?.length) {
+      const withUrls = await Promise.all(
+        framesRes.data.map(async (f) => {
+          const { data } = await supabase.storage.from('report-frames').createSignedUrl(f.storage_path, 3600);
+          return { ...f, signedUrl: data?.signedUrl };
+        })
+      );
+      setFrames(withUrls);
+    }
+
+    setLoading(false);
+  }
+
+  function buildHtml(): string {
+    if (!report) return '';
+    const isOf = report.type === 'oficina';
+    const dateStr = formatDate(report.created_at);
+    const projectName = escHtml(report.projects?.name ?? '—');
+    const rubroStr = escHtml([report.rubros?.code, report.rubros?.name].filter(Boolean).join(' · ') || '—');
+    const studioName = escHtml(studio?.name ?? '');
+    const logoUrl = studio?.logo_url?.startsWith('https://') ? studio.logo_url : '';
+
+    const itemRows = items.map((item) => `
+      <tr>
+        <td>${escHtml(item.trade ?? '—')}</td>
+        <td>${escHtml(item.description)}</td>
+        <td class="status">${escHtml(item.status)}</td>
+      </tr>`).join('');
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1a1a2e; padding: 40px; font-size: 12px; }
+  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #D97757; padding-bottom: 16px; margin-bottom: 24px; }
+  .brand-row { display: flex; align-items: center; gap: 12px; }
+  .logo-img { width: 44px; height: 44px; border-radius: 10px; object-fit: contain; }
+  .brand { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; color: #12151A; }
+  .studio-name { font-size: 11px; color: #888; margin-top: 2px; }
+  .meta { text-align: right; font-size: 10px; color: #888; line-height: 1.6; }
+  .title { font-size: 22px; font-weight: 700; color: #12151A; margin-bottom: 4px; letter-spacing: -0.5px; }
+  .subtitle { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 24px; }
+  .summary { background: #F7F4EE; border-radius: 8px; padding: 16px; margin-bottom: 24px; display: flex; gap: 24px; }
+  .summary-item { flex: 1; }
+  .summary-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: #888; margin-bottom: 3px; }
+  .summary-value { font-size: 13px; font-weight: 700; color: #12151A; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 20px;
+    background: ${isOf ? 'rgba(91,127,212,0.12)' : 'rgba(217,119,87,0.12)'}; color: ${isOf ? '#3A5FB0' : '#C05A30'}; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  thead th { background: #12151A; color: #fff; padding: 10px 12px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; }
+  tbody tr { border-bottom: 1px solid #eee; }
+  tbody tr:nth-child(even) { background: #FAFAFA; }
+  td { padding: 10px 12px; vertical-align: top; line-height: 1.5; }
+  td:first-child { width: 130px; font-weight: 700; font-size: 10px; color: #555; white-space: nowrap; }
+  td.status { width: 90px; font-size: 10px; text-transform: capitalize; color: #888; white-space: nowrap; }
+  .note { margin-top: 20px; padding: 12px 16px; border-left: 3px solid #D97757; background: #FFFBF8; font-style: italic; color: #555; }
+  .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #eee; font-size: 9px; color: #aaa; text-align: center; letter-spacing: 0.5px; text-transform: uppercase; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand-row">
+      ${logoUrl ? `<img class="logo-img" src="${logoUrl}" />` : ''}
+      <div>
+        <div class="brand">MERIDIANO</div>
+        ${studioName ? `<div class="studio-name">${studioName}</div>` : ''}
+      </div>
+    </div>
+    <div class="meta">
+      <div>${dateStr}</div>
+      <div>${projectName}</div>
+      <div>${rubroStr}</div>
+    </div>
+  </div>
+
+  <div class="title">${isOf ? 'Observación Oficina Técnica' : 'Informe de Contratistas'}</div>
+  <div class="subtitle">${projectName}</div>
+  <div class="badge">${isOf ? 'Oficina técnica' : 'Contratistas'}</div>
+
+  <div class="summary">
+    <div class="summary-item">
+      <div class="summary-label">Pendientes</div>
+      <div class="summary-value">${items.length}</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">Proyecto</div>
+      <div class="summary-value">${projectName}</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">Rubro</div>
+      <div class="summary-value">${rubroStr}</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">Fecha</div>
+      <div class="summary-value">${dateStr}</div>
+    </div>
+  </div>
+
+  ${report.note ? `<div class="note">"${escHtml(report.note)}"</div>` : ''}
+
+  <table>
+    <thead>
+      <tr><th>Especialidad</th><th>Descripción</th><th>Estado</th></tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+
+  <div class="footer">Generado por MERIDIANO · Análisis por GPT-4o · ${dateStr}</div>
+</body>
+</html>`;
+  }
+
+  async function handleExportPDF() {
+    if (!report) return;
+    setExporting(true);
+    try {
+      const { uri } = await Print.printToFileAsync({ html: buildHtml(), base64: false });
+      await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Exportar informe' });
+    } catch {
+      Alert.alert('Error', 'No se pudo generar el PDF.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleRequestChange() {
+    if (!changeRequest.trim() || !report) return;
+    setRequesting(true);
+    try {
+      const { error } = await supabase.functions.invoke('revise-report', {
+        body: { report_id: id, instructions: changeRequest.trim() },
+      });
+      if (error) throw error;
+      setChangeSheetVisible(false);
+      setChangeRequest('');
+      await fetchReport();
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'No se pudo procesar el cambio.');
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  const isOficina = report?.type === 'oficina';
   const typeLabel = isOficina ? 'Observación oficina técnica' : 'Informe contratistas';
-  const totalPendientes = MOCK_REPORT.sectors.reduce((acc, s) => acc + s.items.length, 0);
+  const groups = groupByTrade(items);
+  const rubroLabel = [report?.rubros?.code, report?.rubros?.name].filter(Boolean).join(' · ');
+  const isDemoMode = !id || id === 'demo';
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={colors.crema} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -151,11 +305,15 @@ export default function InformeScreen() {
           <Feather name="arrow-left" size={18} color={colors.crema} />
         </TouchableOpacity>
         <View style={styles.topBarCenter}>
-          <Text style={styles.topEyebrow}>{MOCK_REPORT.date} · {MOCK_REPORT.rubro}</Text>
+          {report && (
+            <Text style={styles.topEyebrow}>
+              {formatDate(report.created_at)}{rubroLabel ? ` · ${rubroLabel}` : ''}
+            </Text>
+          )}
           <Text style={styles.topTitle}>Informe</Text>
         </View>
-        <TouchableOpacity style={styles.circleBtn} activeOpacity={0.8}>
-          <Feather name="share-2" size={16} color={colors.crema} />
+        <TouchableOpacity style={styles.circleBtn} onPress={() => setPreviewVisible(true)} activeOpacity={0.8} disabled={!report}>
+          <Feather name="file-text" size={16} color={report ? colors.crema : colors.faint} />
         </TouchableOpacity>
       </View>
 
@@ -179,308 +337,487 @@ export default function InformeScreen() {
             <Feather name={isOficina ? 'briefcase' : 'tool'} size={10} color={isOficina ? '#5B7FD4' : colors.arena} />
             <Text style={[styles.typeChipText, isOficina && styles.typeChipTextOficina]}>{typeLabel}</Text>
           </View>
-          <Text style={styles.summaryProject}>{MOCK_REPORT.project}</Text>
+          <Text style={styles.summaryProject}>{report?.projects?.name ?? '—'}</Text>
           <View style={styles.summaryRow}>
             <View style={styles.summaryChip}>
               <Feather name="alert-circle" size={11} color={colors.arena} />
-              <Text style={[styles.summaryChipText, { color: colors.arena }]}>{totalPendientes} pendientes</Text>
+              <Text style={[styles.summaryChipText, { color: colors.arena }]}>{items.length} pendiente{items.length !== 1 ? 's' : ''}</Text>
             </View>
-            <View style={styles.summaryChip}>
-              <Feather name="video" size={11} color={colors.gris} />
-              <Text style={styles.summaryChipText}>{MOCK_REPORT.duration}</Text>
-            </View>
+            {report?.ai_summary && (
+              <View style={styles.summaryChip}>
+                <Feather name="cpu" size={11} color={colors.gris} />
+                <Text style={styles.summaryChipText}>IA</Text>
+              </View>
+            )}
           </View>
+          {report?.note && (
+            <Text style={styles.noteText}>"{report.note}"</Text>
+          )}
         </View>
 
-        {/* Sectors */}
-        {MOCK_REPORT.sectors.map((sector, i) => (
-          <SectorBlock key={i} sector={sector} showAll={i === 0} />
-        ))}
+        {/* Frames strip */}
+        {frames.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.framesStrip}>
+            {frames.map((f) => (
+              <View key={f.id} style={styles.frameThumb}>
+                {f.signedUrl
+                  ? <Image source={{ uri: f.signedUrl }} style={styles.frameImage} resizeMode="cover" />
+                  : <Feather name="image" size={16} color={colors.faint} />
+                }
+                <Text style={styles.frameTimestamp}>{Math.floor(f.timestamp_sec / 60)}:{String(f.timestamp_sec % 60).padStart(2, '0')}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        )}
 
-        {/* Export area */}
-        <View style={styles.exportArea}>
-          <TouchableOpacity style={styles.btnSecondary} activeOpacity={0.85}>
-            <Feather name="file" size={15} color={colors.crema} />
-            <Text style={styles.btnSecondaryText}>Exportar PDF</Text>
+        {/* Pending items grouped by trade */}
+        {groups.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Feather name="check-circle" size={28} color={colors.faint} />
+            <Text style={styles.emptyText}>
+              {report?.status === 'processing' ? 'Procesando informe…' : 'Sin pendientes detectados'}
+            </Text>
+          </View>
+        ) : (
+          groups.map((g) => (
+            <TradeGroup key={g.trade} trade={g.trade} items={g.items} />
+          ))
+        )}
+
+        {/* Actions */}
+        <View style={styles.actionsArea}>
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            activeOpacity={0.85}
+            onPress={() => setPreviewVisible(true)}
+            disabled={!report}
+          >
+            <Feather name="file-text" size={15} color="#FFFFFF" />
+            <Text style={styles.btnPrimaryText}>Vista previa del PDF</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.btnPrimary} activeOpacity={0.85}>
-            <Text style={styles.btnPrimaryText}>Ver todos  →</Text>
-          </TouchableOpacity>
+
+          {!isDemoMode && (
+            <TouchableOpacity
+              style={styles.btnSecondary}
+              activeOpacity={0.85}
+              onPress={() => setChangeSheetVisible(true)}
+            >
+              <Feather name="edit-2" size={15} color={colors.crema} />
+              <Text style={styles.btnSecondaryText}>Solicitar cambios a la IA</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <Text style={styles.footer}>Generado por MERIDIANO · Análisis por GPT-4o</Text>
       </ScrollView>
+
+      {/* ── PDF Preview Modal ─────────────────────────────────────────── */}
+      <Modal
+        visible={previewVisible}
+        animationType="slide"
+        onRequestClose={() => setPreviewVisible(false)}
+      >
+        <SafeAreaView style={styles.previewSafe} edges={['top']}>
+          <View style={styles.previewHeader}>
+            <TouchableOpacity style={styles.previewCloseBtn} onPress={() => setPreviewVisible(false)} activeOpacity={0.7}>
+              <Feather name="x" size={16} color={colors.crema} />
+            </TouchableOpacity>
+            <Text style={styles.previewTitle}>Vista previa</Text>
+            <View style={{ width: 36 }} />
+          </View>
+
+          <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewScrollContent} showsVerticalScrollIndicator={false}>
+            {/* White page simulation */}
+            <View style={styles.pdfPage}>
+              {/* PDF header */}
+              <View style={styles.pdfPageHeader}>
+                <View style={styles.pdfBrandRow}>
+                  {studio?.logo_url ? (
+                    <Image source={{ uri: studio.logo_url }} style={styles.pdfLogo} />
+                  ) : null}
+                  <View>
+                    <Text style={styles.pdfBrandName}>MERIDIANO</Text>
+                    {studio?.name ? <Text style={styles.pdfStudioName}>{studio.name}</Text> : null}
+                  </View>
+                </View>
+                <View style={styles.pdfMetaBlock}>
+                  {report && <Text style={styles.pdfMetaText}>{formatDate(report.created_at)}</Text>}
+                  {report?.projects?.name && <Text style={styles.pdfMetaText}>{report.projects.name}</Text>}
+                </View>
+              </View>
+              <View style={styles.pdfHeaderDivider} />
+
+              {/* Title */}
+              <Text style={styles.pdfDocTitle}>
+                {isOficina ? 'Observación Oficina Técnica' : 'Informe de Contratistas'}
+              </Text>
+              <Text style={styles.pdfDocSubtitle}>{report?.projects?.name ?? '—'}</Text>
+
+              {/* Badge */}
+              <View style={[styles.pdfBadge, isOficina && styles.pdfBadgeOficina]}>
+                <Text style={[styles.pdfBadgeText, isOficina && styles.pdfBadgeTextOficina]}>
+                  {isOficina ? 'Oficina técnica' : 'Contratistas'}
+                </Text>
+              </View>
+
+              {/* Summary row */}
+              <View style={styles.pdfSummary}>
+                {[
+                  { label: 'Pendientes', value: String(items.length) },
+                  { label: 'Proyecto', value: report?.projects?.name ?? '—' },
+                  { label: 'Rubro', value: rubroLabel || '—' },
+                ].map((s) => (
+                  <View key={s.label} style={styles.pdfSummaryItem}>
+                    <Text style={styles.pdfSummaryLabel}>{s.label}</Text>
+                    <Text style={styles.pdfSummaryValue} numberOfLines={1}>{s.value}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Note */}
+              {report?.note && (
+                <View style={styles.pdfNote}>
+                  <Text style={styles.pdfNoteText}>"{report.note}"</Text>
+                </View>
+              )}
+
+              {/* Table header */}
+              <View style={styles.pdfTableHeader}>
+                <Text style={[styles.pdfThText, { width: 88 }]}>ESPECIALIDAD</Text>
+                <Text style={[styles.pdfThText, { flex: 1 }]}>DESCRIPCIÓN</Text>
+                <Text style={[styles.pdfThText, { width: 72 }]}>ESTADO</Text>
+              </View>
+
+              {/* Table rows */}
+              {items.map((item, i) => (
+                <View key={item.id} style={[styles.pdfTableRow, i % 2 === 1 && styles.pdfTableRowAlt]}>
+                  <Text style={[styles.pdfTdTrade, { width: 88 }]} numberOfLines={2}>{item.trade ?? '—'}</Text>
+                  <Text style={[styles.pdfTdDesc, { flex: 1 }]}>{item.description}</Text>
+                  <Text style={[styles.pdfTdStatus, { width: 72 }]}>{item.status}</Text>
+                </View>
+              ))}
+
+              {items.length === 0 && (
+                <View style={styles.pdfEmptyRow}>
+                  <Text style={styles.pdfEmptyText}>Sin pendientes</Text>
+                </View>
+              )}
+
+              {/* Footer */}
+              <View style={styles.pdfFooterDivider} />
+              <Text style={styles.pdfFooterText}>Generado por MERIDIANO · Análisis por GPT-4o</Text>
+            </View>
+          </ScrollView>
+
+          {/* Bottom actions */}
+          <View style={styles.previewActions}>
+            {!isDemoMode && (
+              <TouchableOpacity
+                style={styles.previewBtnSecondary}
+                activeOpacity={0.85}
+                onPress={() => { setPreviewVisible(false); setChangeSheetVisible(true); }}
+              >
+                <Feather name="edit-2" size={14} color={colors.crema} />
+                <Text style={styles.previewBtnSecondaryText}>Solicitar cambios</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.previewBtnPrimary, exporting && { opacity: 0.6 }]}
+              activeOpacity={0.85}
+              onPress={handleExportPDF}
+              disabled={exporting}
+            >
+              {exporting
+                ? <ActivityIndicator color="#FFF" size="small" />
+                : <>
+                    <Feather name="share-2" size={14} color="#FFF" />
+                    <Text style={styles.previewBtnPrimaryText}>Compartir PDF</Text>
+                  </>
+              }
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── Change Request Sheet ──────────────────────────────────────── */}
+      <Modal
+        visible={changeSheetVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setChangeSheetVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.sheetOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setChangeSheetVisible(false)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={styles.sheetTitle}>Solicitar cambios</Text>
+                <Text style={styles.sheetSubtitle}>La IA revisará y ajustará el informe</Text>
+              </View>
+              <TouchableOpacity onPress={() => setChangeSheetVisible(false)} activeOpacity={0.7}>
+                <Feather name="x" size={18} color={colors.gris} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sheetInputWrap}>
+              <TextInput
+                style={styles.sheetInput}
+                value={changeRequest}
+                onChangeText={setChangeRequest}
+                placeholder="Ej: El ítem del tablero eléctrico ya fue resuelto. Agregar observación sobre humedad en muro norte..."
+                placeholderTextColor={colors.faint}
+                multiline
+                numberOfLines={5}
+                selectionColor={colors.arena}
+                autoFocus
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.sheetBtn, (!changeRequest.trim() || requesting) && styles.sheetBtnDisabled]}
+              onPress={handleRequestChange}
+              activeOpacity={0.85}
+              disabled={!changeRequest.trim() || requesting}
+            >
+              {requesting
+                ? <ActivityIndicator color="#FFF" size="small" />
+                : <>
+                    <Feather name="cpu" size={15} color="#FFF" />
+                    <Text style={styles.sheetBtnText}>Aplicar cambios con IA</Text>
+                  </>
+              }
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.tinta,
-  },
+  safe: { flex: 1, backgroundColor: colors.tinta },
   topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.md,
   },
   circleBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.panel,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#12151A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 14,
-    elevation: 4,
+    width: 42, height: 42, borderRadius: 21, backgroundColor: colors.panel,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.10, shadowRadius: 14, elevation: 4,
   },
-  topBarCenter: {
-    alignItems: 'center',
-    gap: 2,
-  },
+  topBarCenter: { alignItems: 'center', gap: 2, flex: 1, paddingHorizontal: spacing.sm },
   topEyebrow: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 9,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: colors.gris,
+    fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 0.8,
+    textTransform: 'uppercase', color: colors.gris, textAlign: 'center',
   },
-  topTitle: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 17,
-    color: colors.crema,
-    letterSpacing: -0.3,
-  },
-  scrollContent: {
-    paddingBottom: 48,
-    gap: spacing.lg,
-  },
+  topTitle: { fontFamily: fonts.archivo.bold, fontSize: 17, color: colors.crema, letterSpacing: -0.3 },
+
+  scrollContent: { paddingBottom: 48, gap: spacing.lg },
+
   summaryCard: {
-    marginHorizontal: spacing.xl,
-    backgroundColor: colors.panel,
-    borderRadius: 20,
-    padding: 18,
-    gap: 10,
-    shadowColor: '#12151A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
-    elevation: 2,
+    marginHorizontal: spacing.xl, backgroundColor: colors.panel,
+    borderRadius: 20, padding: 18, gap: 10,
+    shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
   },
   studioBrand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    marginBottom: 2,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 2,
   },
   studioLogoSlot: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.chip,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0,
+    width: 32, height: 32, borderRadius: 8, backgroundColor: colors.chip,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
   },
-  studioLogoImage: {
-    width: '100%',
-    height: '100%',
-  },
-  studioLogoInitials: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 11,
-    color: colors.crema,
-    letterSpacing: -0.3,
-  },
-  studioNameText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 13,
-    color: colors.gris,
-    letterSpacing: -0.1,
-  },
+  studioLogoImage: { width: '100%', height: '100%' },
+  studioLogoInitials: { fontFamily: fonts.archivo.bold, fontSize: 11, color: colors.crema, letterSpacing: -0.3 },
+  studioNameText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: colors.gris, letterSpacing: -0.1 },
+
   typeChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    height: 24,
-    paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(217,119,87,0.10)',
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    height: 24, paddingHorizontal: 10, borderRadius: 12, backgroundColor: 'rgba(217,119,87,0.10)',
   },
-  typeChipOficina: {
-    backgroundColor: 'rgba(91,127,212,0.10)',
+  typeChipOficina: { backgroundColor: 'rgba(91,127,212,0.10)' },
+  typeChipText: { fontFamily: fonts.archivo.bold, fontSize: 10, letterSpacing: 0.2, color: colors.arena },
+  typeChipTextOficina: { color: '#5B7FD4' },
+
+  summaryProject: { fontFamily: fonts.archivo.bold, fontSize: 17, color: colors.crema, letterSpacing: -0.3 },
+  summaryRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+  summaryChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    height: 28, paddingHorizontal: 10, borderRadius: 14, backgroundColor: colors.chip,
   },
-  typeChipText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 10,
-    letterSpacing: 0.2,
-    color: colors.arena,
-  },
-  typeChipTextOficina: {
-    color: '#5B7FD4',
+  summaryChipText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: colors.gris },
+  noteText: {
+    fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.gris,
+    fontStyle: 'italic', lineHeight: 18,
   },
 
-  summaryProject: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 17,
-    color: colors.crema,
-    letterSpacing: -0.3,
+  framesStrip: { paddingHorizontal: spacing.xl, gap: 10 },
+  frameThumb: {
+    width: 100, height: 76, borderRadius: 12, backgroundColor: colors.chip,
+    overflow: 'hidden', alignItems: 'center', justifyContent: 'center',
   },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  summaryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    height: 28,
-    paddingHorizontal: 10,
-    borderRadius: 14,
-    backgroundColor: colors.chip,
-  },
-  summaryChipText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 11,
-    color: colors.gris,
-  },
-  sectorBlock: {
-    paddingHorizontal: spacing.xl,
-    gap: 10,
-  },
-  sectorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 2,
-  },
-  sectorName: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 15,
-    color: colors.crema,
-    letterSpacing: -0.2,
-  },
-  sectorCount: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 10,
-    color: colors.gris,
-    letterSpacing: 0.5,
-  },
-  itemCard: {
-    flexDirection: 'row',
-    gap: 14,
-    backgroundColor: colors.panel,
-    borderRadius: 18,
-    padding: 14,
-    shadowColor: '#12151A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 2,
-  },
-  imageSlot: {
-    width: 64,
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: colors.chip,
-    flexShrink: 0,
+  frameImage: { width: '100%', height: '100%' },
+  frameTimestamp: {
+    position: 'absolute', bottom: 4, right: 6,
+    fontFamily: fonts.mono.regular, fontSize: 8, color: '#FFFFFF',
+    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1,
     overflow: 'hidden',
   },
-  slotImage: {
-    width: '100%',
-    height: '100%',
+
+  sectorBlock: { paddingHorizontal: spacing.xl, gap: 10 },
+  sectorHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 2,
   },
-  itemBody: {
-    flex: 1,
-    gap: 8,
-    justifyContent: 'center',
+  sectorName: { fontFamily: fonts.archivo.bold, fontSize: 15, color: colors.crema, letterSpacing: -0.2 },
+  sectorCount: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.gris, letterSpacing: 0.5 },
+
+  itemCard: {
+    flexDirection: 'row', gap: 12,
+    backgroundColor: colors.panel, borderRadius: 16, padding: 14,
+    shadowColor: '#12151A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
   },
-  itemDescription: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 13,
-    color: colors.crema,
-    lineHeight: 19,
+  itemDot: {
+    width: 6, height: 6, borderRadius: 3, backgroundColor: colors.arena,
+    marginTop: 6, flexShrink: 0,
   },
-  itemMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
+  itemBody: { flex: 1 },
+  itemDescription: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.crema, lineHeight: 19 },
+
   chip: {
-    height: 24,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    backgroundColor: colors.chip,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 22, borderRadius: 11, paddingHorizontal: 8,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start',
   },
-  chipText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 9.5,
-    letterSpacing: 0.3,
-    color: colors.crema,
-  },
-  frameNote: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 9.5,
-    color: colors.gris,
-    letterSpacing: 0.3,
-  },
-  exportArea: {
-    marginHorizontal: spacing.xl,
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  btnSecondary: {
-    flex: 1,
-    height: 54,
-    borderRadius: 27,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.panel,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-  },
-  btnSecondaryText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 14,
-    color: colors.crema,
-  },
+  chipText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
+
+  emptyState: { alignItems: 'center', gap: 10, paddingVertical: 40 },
+  emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
+
+  actionsArea: { marginHorizontal: spacing.xl, gap: spacing.sm },
   btnPrimary: {
-    flex: 1,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: colors.crema,
-    alignItems: 'center',
-    justifyContent: 'center',
+    height: 54, borderRadius: 27, backgroundColor: colors.crema,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
   },
-  btnPrimaryText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 14,
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
+  btnPrimaryText: { fontFamily: fonts.archivo.bold, fontSize: 14, color: '#FFFFFF' },
+  btnSecondary: {
+    height: 54, borderRadius: 27, borderWidth: 1.5, borderColor: colors.border,
+    backgroundColor: colors.panel, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
   },
+  btnSecondaryText: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema },
+
   footer: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 9.5,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    color: colors.faint,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
+    fontFamily: fonts.mono.regular, fontSize: 9.5, letterSpacing: 0.4,
+    textTransform: 'uppercase', color: colors.faint, textAlign: 'center', paddingHorizontal: spacing.xl,
   },
+
+  // ── Preview modal ────────────────────────────────────────────────
+  previewSafe: { flex: 1, backgroundColor: '#ECEAE4' },
+  previewHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl, paddingVertical: spacing.md,
+    backgroundColor: colors.tinta,
+  },
+  previewCloseBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: colors.panel,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  previewTitle: { fontFamily: fonts.archivo.bold, fontSize: 15, color: colors.crema },
+  previewScroll: { flex: 1 },
+  previewScrollContent: { padding: 16, paddingBottom: 32 },
+
+  pdfPage: {
+    backgroundColor: '#FFFFFF', borderRadius: 12, padding: 24,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 4,
+  },
+  pdfPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  pdfBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  pdfLogo: { width: 40, height: 40, borderRadius: 8 },
+  pdfBrandName: { fontFamily: fonts.archivo.bold, fontSize: 16, color: '#12151A', letterSpacing: -0.4 },
+  pdfStudioName: { fontFamily: fonts.archivo.semibold, fontSize: 11, color: '#888', marginTop: 1 },
+  pdfMetaBlock: { alignItems: 'flex-end', gap: 2 },
+  pdfMetaText: { fontFamily: fonts.archivo.semibold, fontSize: 10, color: '#888' },
+  pdfHeaderDivider: { height: 2, backgroundColor: '#D97757', marginBottom: 16 },
+
+  pdfDocTitle: { fontFamily: fonts.archivo.bold, fontSize: 18, color: '#12151A', letterSpacing: -0.4, marginBottom: 3 },
+  pdfDocSubtitle: { fontFamily: fonts.archivo.semibold, fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 12 },
+
+  pdfBadge: {
+    alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10, marginBottom: 16,
+    backgroundColor: 'rgba(217,119,87,0.12)',
+  },
+  pdfBadgeOficina: { backgroundColor: 'rgba(91,127,212,0.12)' },
+  pdfBadgeText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.4, color: '#C05A30' },
+  pdfBadgeTextOficina: { color: '#3A5FB0' },
+
+  pdfSummary: { flexDirection: 'row', backgroundColor: '#F7F4EE', borderRadius: 8, padding: 12, marginBottom: 18, gap: 8 },
+  pdfSummaryItem: { flex: 1 },
+  pdfSummaryLabel: { fontFamily: fonts.mono.regular, fontSize: 8, letterSpacing: 0.8, textTransform: 'uppercase', color: '#888', marginBottom: 3 },
+  pdfSummaryValue: { fontFamily: fonts.archivo.bold, fontSize: 12, color: '#12151A' },
+
+  pdfNote: { borderLeftWidth: 3, borderLeftColor: '#D97757', paddingLeft: 12, paddingVertical: 8, backgroundColor: '#FFFBF8', borderRadius: 4, marginBottom: 14 },
+  pdfNoteText: { fontFamily: fonts.archivo.semibold, fontSize: 11, color: '#555', fontStyle: 'italic' },
+
+  pdfTableHeader: { flexDirection: 'row', backgroundColor: '#12151A', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, marginBottom: 2 },
+  pdfThText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.5, color: '#FFFFFF', textTransform: 'uppercase' },
+  pdfTableRow: { flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F0EDE8' },
+  pdfTableRowAlt: { backgroundColor: '#FAFAFA' },
+  pdfTdTrade: { fontFamily: fonts.archivo.bold, fontSize: 9.5, color: '#555' },
+  pdfTdDesc: { fontFamily: fonts.archivo.semibold, fontSize: 11, color: '#12151A', lineHeight: 16, paddingHorizontal: 6 },
+  pdfTdStatus: { fontFamily: fonts.archivo.semibold, fontSize: 9.5, color: '#888', textTransform: 'capitalize' },
+  pdfEmptyRow: { paddingVertical: 20, alignItems: 'center' },
+  pdfEmptyText: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: '#AAA' },
+
+  pdfFooterDivider: { height: 1, backgroundColor: '#EEE', marginTop: 20, marginBottom: 10 },
+  pdfFooterText: { fontFamily: fonts.archivo.semibold, fontSize: 8.5, color: '#AAA', textAlign: 'center', letterSpacing: 0.4, textTransform: 'uppercase' },
+
+  previewActions: {
+    flexDirection: 'row', gap: spacing.sm,
+    paddingHorizontal: spacing.xl, paddingVertical: spacing.md,
+    backgroundColor: colors.tinta, borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  previewBtnSecondary: {
+    flex: 1, height: 50, borderRadius: 25, borderWidth: 1.5, borderColor: colors.border,
+    backgroundColor: colors.panel, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  previewBtnSecondaryText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: colors.crema },
+  previewBtnPrimary: {
+    flex: 1, height: 50, borderRadius: 25, backgroundColor: colors.crema,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+  },
+  previewBtnPrimaryText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: '#FFFFFF' },
+
+  // ── Change request sheet ─────────────────────────────────────────
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
+  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  sheet: {
+    backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: spacing.xl, paddingBottom: 36, paddingTop: 12, gap: spacing.lg,
+  },
+  sheetHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
+    alignSelf: 'center', marginBottom: 4,
+  },
+  sheetHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  sheetTitle: { fontFamily: fonts.archivo.bold, fontSize: 18, color: colors.crema, letterSpacing: -0.3 },
+  sheetSubtitle: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.gris, marginTop: 3 },
+
+  sheetInputWrap: {
+    backgroundColor: colors.chip, borderRadius: 18,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+  },
+  sheetInput: {
+    fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.crema,
+    minHeight: 100, textAlignVertical: 'top',
+  },
+  sheetBtn: {
+    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+  },
+  sheetBtnDisabled: { opacity: 0.35 },
+  sheetBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
 });
