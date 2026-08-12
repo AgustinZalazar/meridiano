@@ -1,12 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  Image, LayoutChangeEvent, KeyboardAvoidingView, Platform,
+  Image, LayoutChangeEvent, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import ViewShot from 'react-native-view-shot';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing, fonts } from '../constants/theme';
+import { useAuth } from '../lib/auth-context';
+import { uploadFotoAnnotation } from '../lib/upload-image';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -80,7 +84,12 @@ function StrokeLines({ points, color, width }: { points: Pt[]; color: string; wi
 
 export default function EditarFotoScreen() {
   const router = useRouter();
-  const { uri, rubro } = useLocalSearchParams<{ uri: string; rubro: string }>();
+  const { session } = useAuth();
+  const { uri, project: projectId, rubro, rubroId, type } =
+    useLocalSearchParams<{ uri: string; project: string; rubro: string; rubroId: string; type: string }>();
+
+  const viewShotRef = useRef<ViewShot>(null);
+  const [capturing, setCapturing] = useState(false);
 
   const [tool, setTool] = useState<Tool>('markers');
   const toolRef = useRef<Tool>('markers');
@@ -155,6 +164,33 @@ export default function EditarFotoScreen() {
   };
 
   // ─── Actions ───────────────────────────────────────────────────────────────
+
+  async function handleAnalyze() {
+    if (!session || !viewShotRef.current) return;
+    setCapturing(true);
+    try {
+      const capturedUri = await viewShotRef.current.capture!();
+      const base64 = await FileSystem.readAsStringAsync(capturedUri, { encoding: FileSystem.EncodingType.Base64 });
+      const fotoUrl = await uploadFotoAnnotation(session.user.id, capturedUri, base64);
+      if (!fotoUrl) throw new Error('No se pudo subir la foto anotada.');
+      router.replace({
+        pathname: '/procesando',
+        params: {
+          mode: 'foto',
+          type: type ?? 'contratistas',
+          fotoUrl,
+          markersJson: JSON.stringify(markers.map((m) => ({ description: m.description, rx: m.rx, ry: m.ry }))),
+          comment,
+          projectId: projectId ?? '',
+          rubroId: rubroId ?? '',
+        },
+      });
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'No se pudo procesar la foto.');
+    } finally {
+      setCapturing(false);
+    }
+  }
 
   function removeMarker(id: string) {
     setMarkers((prev) => prev.filter((m) => m.id !== id));
@@ -235,6 +271,7 @@ export default function EditarFotoScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
           {/* Photo + annotations */}
+          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.92 }} style={styles.photoWrapOuter}>
           <View style={styles.photoWrap} onLayout={onImageLayout} {...photoResponder}>
             <Image source={{ uri: uri ?? fallback }} style={styles.photo} resizeMode="cover" />
 
@@ -286,6 +323,7 @@ export default function EditarFotoScreen() {
               </View>
             )}
           </View>
+          </ViewShot>
 
           {/* Drawing toolbar */}
           {tool === 'dibujo' && (
@@ -387,13 +425,18 @@ export default function EditarFotoScreen() {
               <Text style={styles.ctaHint}>Describí todos los marcadores para continuar</Text>
             )}
             <TouchableOpacity
-              style={[styles.btnPrimary, !canAnalyze && styles.btnPrimaryDisabled]}
-              onPress={() => router.replace('/procesando?mode=foto')}
-              disabled={!canAnalyze}
+              style={[styles.btnPrimary, (!canAnalyze || capturing) && styles.btnPrimaryDisabled]}
+              onPress={handleAnalyze}
+              disabled={!canAnalyze || capturing}
               activeOpacity={0.85}
             >
-              <Feather name="zap" size={16} color="#FFFFFF" />
-              <Text style={styles.btnPrimaryText}>Analizar con AI  →</Text>
+              {capturing
+                ? <ActivityIndicator color="#FFFFFF" size="small" />
+                : <>
+                    <Feather name="zap" size={16} color="#FFFFFF" />
+                    <Text style={styles.btnPrimaryText}>Analizar con AI  →</Text>
+                  </>
+              }
             </TouchableOpacity>
             <TouchableOpacity style={styles.btnSkip} onPress={() => router.back()} activeOpacity={0.7}>
               <Text style={styles.btnSkipText}>Cancelar</Text>
@@ -446,8 +489,9 @@ const styles = StyleSheet.create({
 
   scroll: { paddingBottom: 48, gap: spacing.lg },
 
+  photoWrapOuter: { marginHorizontal: spacing.xl },
   photoWrap: {
-    marginHorizontal: spacing.xl, borderRadius: 24, overflow: 'hidden',
+    borderRadius: 24, overflow: 'hidden',
     backgroundColor: colors.chip, minHeight: 240,
   },
   photo: { width: '100%', aspectRatio: 4 / 3 },

@@ -18,7 +18,7 @@ interface DbProject {
   rubros: { id: string; status: string }[];
 }
 
-const FILTERS = ['Todos', 'En curso', 'Pausado'];
+const FILTERS = ['Todos', 'En curso'];
 
 function StatusPill({ rubros }: { rubros: { status: string }[] }) {
   const active = rubros.some((r) => r.status === 'en_curso');
@@ -93,7 +93,6 @@ export default function ProyectosScreen() {
   const filtered = projects
     .filter((p) => {
       if (filter === 'En curso') return p.rubros.some((r) => r.status === 'en_curso');
-      if (filter === 'Pausado') return !p.rubros.some((r) => r.status === 'en_curso');
       return true;
     })
     .filter((p) =>

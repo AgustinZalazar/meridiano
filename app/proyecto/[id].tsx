@@ -20,6 +20,7 @@ interface DbProject {
   id: string;
   name: string;
   image_url: string | null;
+  logo_url: string | null;
   start_date: string | null;
   end_date: string | null;
 }
@@ -184,7 +185,7 @@ export default function ProyectoScreen() {
       setLoading(true);
 
       Promise.all([
-        supabase.from('projects').select('id, name, image_url, start_date, end_date').eq('id', projectId).single(),
+        supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date').eq('id', projectId).single(),
         supabase.from('rubros').select('id, code, name, contractor, status, start_date, end_date').eq('project_id', projectId).order('created_at'),
         supabase.from('pending_items').select('id, description, rubro_id, trade, status, reports(type)').eq('project_id', projectId),
         supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
@@ -304,6 +305,7 @@ export default function ProyectoScreen() {
                 id: project.id,
                 name: project.name,
                 image_url: project.image_url ?? '',
+                logo_url: project.logo_url ?? '',
                 start_date: project.start_date ?? '',
                 end_date: project.end_date ?? '',
               },
@@ -332,6 +334,9 @@ export default function ProyectoScreen() {
         <View style={styles.scrimFar} />
         <View style={styles.scrimNear} />
         <View style={styles.bannerOverlay}>
+          {project.logo_url ? (
+            <Image source={{ uri: project.logo_url }} style={styles.projectLogoImg} resizeMode="contain" />
+          ) : null}
           <Text style={styles.bannerEyebrow}>PROYECTO</Text>
           <Text style={styles.bannerTitle}>{project.name}</Text>
         </View>
@@ -596,6 +601,10 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)',
   },
   bannerTitle: { fontFamily: fonts.archivo.bold, fontSize: 24, color: '#FFFFFF', letterSpacing: -0.5 },
+  projectLogoImg: {
+    width: 52, height: 52, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 4,
+  },
 
   pillNavWrap: { alignItems: 'center', paddingVertical: spacing.md },
   pillNav: {

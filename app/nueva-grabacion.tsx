@@ -244,7 +244,7 @@ export default function NuevaGrabacionScreen() {
     if (mode === 'foto' && photoUri) {
       router.push({
         pathname: '/editar-foto',
-        params: { uri: photoUri, project: selectedProjectId ?? '', rubro: selectedRubro ?? '', type: reportType },
+        params: { uri: photoUri, project: selectedProjectId ?? '', rubro: selectedRubro ?? '', rubroId: selectedRubroId ?? '', type: reportType },
       });
     } else if (videoUri) {
       router.replace({

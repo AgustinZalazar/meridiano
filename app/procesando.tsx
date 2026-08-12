@@ -81,9 +81,10 @@ function StageRow({
 
 export default function ProcesandoScreen() {
   const router = useRouter();
-  const { mode, type, videoUri, projectId, rubroId, note } = useLocalSearchParams<{
+  const { mode, type, videoUri, projectId, rubroId, note, fotoUrl, markersJson, comment } = useLocalSearchParams<{
     mode?: string; type?: string; videoUri?: string;
     projectId?: string; rubroId?: string; note?: string;
+    fotoUrl?: string; markersJson?: string; comment?: string;
   }>();
   const { studio } = useStudio();
 
@@ -98,18 +99,43 @@ export default function ProcesandoScreen() {
   const [errorMsg, setErrorMsg]           = useState<string | null>(null);
   const [reportId, setReportId]           = useState<string | null>(null);
 
-  // ── Foto flow (mock — backend pendiente) ──────────────────────
+  // ── Foto flow ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isFoto) return;
-    setStageIndex(0);
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    FOTO_DELAYS.forEach((delay, index) => {
-      timers.push(setTimeout(() => {
-        setStageIndex(index + 1);
-        if (index === FOTO_DELAYS.length - 1) setTimeout(() => setDone(true), 500);
-      }, delay));
-    });
-    return () => timers.forEach(clearTimeout);
+
+    async function runFoto() {
+      try {
+        setStageIndex(0);
+        await new Promise((r) => setTimeout(r, 400));
+        setStageIndex(1);
+        await new Promise((r) => setTimeout(r, 500));
+        setStageIndex(2);
+
+        const markers = markersJson ? JSON.parse(markersJson) : [];
+        const { data, error } = await supabase.functions.invoke('analyze-foto', {
+          body: {
+            project_id: projectId || null,
+            rubro_id: rubroId || null,
+            type: type ?? 'contratistas',
+            foto_url: fotoUrl,
+            markers,
+            comment: comment || null,
+          },
+        });
+
+        if (error) throw new Error(error.message ?? 'Error al analizar la foto');
+
+        setStageIndex(3);
+        await new Promise((r) => setTimeout(r, 400));
+        setStageIndex(4);
+        setReportId(data.report_id);
+        setTimeout(() => setDone(true), 300);
+      } catch (e: any) {
+        setErrorMsg(e.message ?? 'Ocurrió un error inesperado.');
+      }
+    }
+
+    runFoto();
   }, [isFoto]);
 
   // ── Video flow ─────────────────────────────────────────────────

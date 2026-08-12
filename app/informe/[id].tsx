@@ -21,9 +21,10 @@ interface Report {
   note: string | null;
   transcription: string | null;
   ai_summary: string | null;
+  foto_url: string | null;
   status: string;
   created_at: string;
-  projects: { name: string } | null;
+  projects: { name: string; image_url: string | null; logo_url: string | null } | null;
   rubros: { name: string; code?: string } | null;
 }
 
@@ -128,7 +129,7 @@ export default function InformeScreen() {
   async function fetchReport() {
     setLoading(true);
     const [reportRes, itemsRes, framesRes] = await Promise.all([
-      supabase.from('reports').select('id, type, mode, note, transcription, ai_summary, status, created_at, projects(name), rubros(name, code)').eq('id', id).single<Report>(),
+      supabase.from('reports').select('id, type, mode, note, transcription, ai_summary, foto_url, status, created_at, projects(name, image_url, logo_url), rubros(name, code)').eq('id', id).single<Report>(),
       supabase.from('pending_items').select('id, description, trade, status, source').eq('report_id', id).order('created_at'),
       supabase.from('report_frames').select('id, storage_path, timestamp_sec, order_index').eq('report_id', id).order('order_index').limit(6),
     ]);
@@ -157,6 +158,22 @@ export default function InformeScreen() {
     const rubroStr = escHtml([report.rubros?.code, report.rubros?.name].filter(Boolean).join(' · ') || '—');
     const studioName = escHtml(studio?.name ?? '');
     const logoUrl = studio?.logo_url?.startsWith('https://') ? studio.logo_url : '';
+    const projectImageUrl = report.projects?.image_url?.startsWith('https://') ? report.projects.image_url : '';
+    const projectLogoUrl = report.projects?.logo_url?.startsWith('https://') ? report.projects.logo_url : '';
+    const fotoAnnotatedUrl = report.foto_url?.startsWith('https://') ? report.foto_url : '';
+
+    const framesWithUrl = frames.filter((f) => f.signedUrl);
+    const framesHtml = framesWithUrl.length > 0 ? `
+  <div class="frames-section">
+    <div class="frames-label">CAPTURAS DEL VIDEO</div>
+    <div class="frames-grid">
+      ${framesWithUrl.map((f) => {
+        const mins = Math.floor(f.timestamp_sec / 60);
+        const secs = String(f.timestamp_sec % 60).padStart(2, '0');
+        return `<div class="frame-item"><img class="frame-img" src="${f.signedUrl}" /><div class="frame-ts">${mins}:${secs}</div></div>`;
+      }).join('')}
+    </div>
+  </div>` : '';
 
     const itemRows = items.map((item) => `
       <tr>
@@ -178,7 +195,6 @@ export default function InformeScreen() {
   .brand { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; color: #12151A; }
   .studio-name { font-size: 11px; color: #888; margin-top: 2px; }
   .meta { text-align: right; font-size: 10px; color: #888; line-height: 1.6; }
-  .title { font-size: 22px; font-weight: 700; color: #12151A; margin-bottom: 4px; letter-spacing: -0.5px; }
   .subtitle { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 24px; }
   .summary { background: #F7F4EE; border-radius: 8px; padding: 16px; margin-bottom: 24px; display: flex; gap: 24px; }
   .summary-item { flex: 1; }
@@ -194,6 +210,19 @@ export default function InformeScreen() {
   td:first-child { width: 130px; font-weight: 700; font-size: 10px; color: #555; white-space: nowrap; }
   td.status { width: 90px; font-size: 10px; text-transform: capitalize; color: #888; white-space: nowrap; }
   .note { margin-top: 20px; padding: 12px 16px; border-left: 3px solid #D97757; background: #FFFBF8; font-style: italic; color: #555; }
+  .project-hero { width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 16px; display: block; }
+  .foto-section { margin-top: 24px; margin-bottom: 8px; }
+  .foto-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px; color: #888; margin-bottom: 8px; font-weight: 700; }
+  .foto-img { width: 100%; max-height: 320px; object-fit: contain; border-radius: 8px; display: block; border: 1px solid #EEE; }
+  .project-title-row { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+  .project-logo { width: 48px; height: 48px; border-radius: 10px; object-fit: contain; background: #F7F4EE; flex-shrink: 0; }
+  .title { font-size: 22px; font-weight: 700; color: #12151A; letter-spacing: -0.5px; }
+  .frames-section { margin-top: 28px; }
+  .frames-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px; color: #888; margin-bottom: 10px; font-weight: 700; }
+  .frames-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .frame-item { position: relative; }
+  .frame-img { width: 152px; height: 114px; object-fit: cover; border-radius: 6px; display: block; }
+  .frame-ts { position: absolute; bottom: 5px; right: 5px; background: rgba(0,0,0,0.6); color: #fff; font-size: 8px; padding: 2px 5px; border-radius: 4px; }
   .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #eee; font-size: 9px; color: #aaa; text-align: center; letter-spacing: 0.5px; text-transform: uppercase; }
 </style>
 </head>
@@ -213,7 +242,11 @@ export default function InformeScreen() {
     </div>
   </div>
 
-  <div class="title">${isOf ? 'Observación Oficina Técnica' : 'Informe de Contratistas'}</div>
+  ${projectImageUrl ? `<img class="project-hero" src="${projectImageUrl}" />` : ''}
+  <div class="project-title-row">
+    ${projectLogoUrl ? `<img class="project-logo" src="${projectLogoUrl}" />` : ''}
+    <div class="title">${isOf ? 'Observación Oficina Técnica' : 'Informe de Contratistas'}</div>
+  </div>
   <div class="subtitle">${projectName}</div>
   <div class="badge">${isOf ? 'Oficina técnica' : 'Contratistas'}</div>
 
@@ -238,12 +271,20 @@ export default function InformeScreen() {
 
   ${report.note ? `<div class="note">"${escHtml(report.note)}"</div>` : ''}
 
+  ${fotoAnnotatedUrl ? `
+  <div class="foto-section">
+    <div class="foto-label">FOTO CON INDICACIONES</div>
+    <img class="foto-img" src="${fotoAnnotatedUrl}" />
+  </div>` : ''}
+
   <table>
     <thead>
       <tr><th>Especialidad</th><th>Descripción</th><th>Estado</th></tr>
     </thead>
     <tbody>${itemRows}</tbody>
   </table>
+
+  ${framesHtml}
 
   <div class="footer">Generado por MERIDIANO · Análisis por GPT-4o · ${dateStr}</div>
 </body>
@@ -354,6 +395,14 @@ export default function InformeScreen() {
             <Text style={styles.noteText}>"{report.note}"</Text>
           )}
         </View>
+
+        {/* Foto anotada (modo foto) */}
+        {report?.foto_url && (
+          <View style={styles.fotoBlock}>
+            <Text style={styles.fotoLabel}>FOTO CON INDICACIONES</Text>
+            <Image source={{ uri: report.foto_url }} style={styles.fotoImage} resizeMode="contain" />
+          </View>
+        )}
 
         {/* Frames strip */}
         {frames.length > 0 && (
@@ -655,6 +704,16 @@ const styles = StyleSheet.create({
   noteText: {
     fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.gris,
     fontStyle: 'italic', lineHeight: 18,
+  },
+
+  fotoBlock: { marginHorizontal: spacing.xl, gap: 8 },
+  fotoLabel: {
+    fontFamily: fonts.mono.regular, fontSize: 9.5, letterSpacing: 1.2,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700',
+  },
+  fotoImage: {
+    width: '100%', aspectRatio: 4 / 3, borderRadius: 16,
+    backgroundColor: colors.chip,
   },
 
   framesStrip: { paddingHorizontal: spacing.xl, gap: 10 },

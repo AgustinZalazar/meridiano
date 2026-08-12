@@ -11,7 +11,7 @@ import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
 import { DateField } from '../../components/DateField';
-import { uploadProjectImage } from '../../lib/upload-image';
+import { uploadProjectImage, uploadProjectLogo } from '../../lib/upload-image';
 
 function parseDateParam(s: string | undefined | string[]): Date | null {
   if (!s || s === '') return null;
@@ -24,8 +24,8 @@ export default function EditarProyectoScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
-  const { id, name: initName, image_url: initImageUrl, start_date: initStart, end_date: initEnd } =
-    useLocalSearchParams<{ id: string; name: string; image_url?: string; start_date?: string; end_date?: string }>();
+  const { id, name: initName, image_url: initImageUrl, logo_url: initLogoUrl, start_date: initStart, end_date: initEnd } =
+    useLocalSearchParams<{ id: string; name: string; image_url?: string; logo_url?: string; start_date?: string; end_date?: string }>();
 
   const [name, setName] = useState(Array.isArray(initName) ? initName[0] : (initName ?? ''));
   const [startDate, setStartDate] = useState<Date | null>(parseDateParam(initStart));
@@ -34,6 +34,10 @@ export default function EditarProyectoScreen() {
     Array.isArray(initImageUrl) ? initImageUrl[0] : (initImageUrl || null)
   );
   const [pickedBase64, setPickedBase64] = useState<string | null>(null);
+  const [logoUri, setLogoUri] = useState<string | null>(
+    Array.isArray(initLogoUrl) ? initLogoUrl[0] : (initLogoUrl || null)
+  );
+  const [logoPickedBase64, setLogoPickedBase64] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +60,20 @@ export default function EditarProyectoScreen() {
     }
   }
 
+  async function pickLogo() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setLogoUri(result.assets[0].uri);
+      setLogoPickedBase64(result.assets[0].base64 ?? null);
+    }
+  }
+
   async function handleSave() {
     if (!canSave || !session) return;
     setLoading(true);
@@ -71,11 +89,22 @@ export default function EditarProyectoScreen() {
       }
     }
 
+    let finalLogoUrl: string | null = logoUri?.startsWith('http') ? logoUri : null;
+    if (logoUri && !logoUri.startsWith('http') && logoPickedBase64) {
+      finalLogoUrl = await uploadProjectLogo(session.user.id, logoUri, logoPickedBase64);
+      if (!finalLogoUrl) {
+        setLoading(false);
+        setError('No se pudo subir el logo. Verificá tu conexión e intentá de nuevo.');
+        return;
+      }
+    }
+
     const { error: dbError } = await supabase
       .from('projects')
       .update({
         name: name.trim(),
         image_url: finalImageUrl,
+        logo_url: finalLogoUrl,
         start_date: startDate ? startDate.toISOString().slice(0, 10) : null,
         end_date: endDate ? endDate.toISOString().slice(0, 10) : null,
       })
@@ -154,6 +183,24 @@ export default function EditarProyectoScreen() {
             <Feather name="camera" size={13} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
+
+        {/* Logo */}
+        <View style={styles.field}>
+          <Text style={styles.fieldLabel}>LOGO DEL PROYECTO</Text>
+          <TouchableOpacity style={styles.logoPicker} onPress={pickLogo} activeOpacity={0.85}>
+            {logoUri ? (
+              <Image source={{ uri: logoUri }} style={styles.logoPreview} />
+            ) : (
+              <View style={styles.logoPlaceholder}>
+                <Feather name="image" size={20} color={colors.faint} />
+                <Text style={styles.logoPlaceholderText}>Agregar logo</Text>
+              </View>
+            )}
+            <View style={styles.imageEditBadge}>
+              <Feather name="camera" size={13} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+        </View>
 
         {/* Nombre */}
         <View style={styles.field}>
@@ -254,6 +301,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(18,21,26,0.6)',
     alignItems: 'center', justifyContent: 'center',
   },
+
+  logoPicker: {
+    width: 100, height: 100, borderRadius: 20, overflow: 'hidden', backgroundColor: colors.chip,
+  },
+  logoPreview: { width: '100%', height: '100%' },
+  logoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  logoPlaceholderText: { fontFamily: fonts.archivo.semibold, fontSize: 11, color: colors.faint },
 
   field: { gap: 8 },
   fieldLabel: {
