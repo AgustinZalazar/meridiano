@@ -106,7 +106,13 @@ Especialidades válidas: albanilería, electricidad, plomería, carpintería, pi
     const imgRes = await fetch(foto_url);
     if (!imgRes.ok) throw new Error('No se pudo descargar la imagen anotada');
     const imgBuffer = await imgRes.arrayBuffer();
-    const imgBase64 = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
+    const bytes = new Uint8Array(imgBuffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const imgBase64 = btoa(binary);
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
