@@ -113,9 +113,7 @@ export default function EditarFotoScreen() {
   useEffect(() => { drawColorRef.current = drawColor; }, [drawColor]);
   useEffect(() => { drawWidthRef.current = drawWidth; }, [drawWidth]);
 
-  const canAnalyze =
-    (markers.length > 0 && markers.every((m) => m.description.trim().length > 0)) ||
-    strokes.length > 0;
+  const canAnalyze = markers.every((m) => m.description.trim().length > 0);
 
   function onImageLayout(e: LayoutChangeEvent) {
     setImgW(e.nativeEvent.layout.width);
@@ -273,7 +271,7 @@ export default function EditarFotoScreen() {
           {/* Photo + annotations */}
           <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.92 }} style={styles.photoWrapOuter}>
           <View style={styles.photoWrap} onLayout={onImageLayout} {...photoResponder}>
-            <Image source={{ uri: uri ?? fallback }} style={styles.photo} resizeMode="cover" />
+            <Image source={{ uri: uri ?? fallback }} style={styles.photo} resizeMode="contain" />
 
             {/* Drawing overlay — pure RN Views, no native SVG */}
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -421,7 +419,7 @@ export default function EditarFotoScreen() {
 
           {/* CTA */}
           <View style={styles.ctaBlock}>
-            {tool === 'markers' && markers.length > 0 && !markers.every((m) => m.description.trim().length > 0) && (
+            {markers.length > 0 && !markers.every((m) => m.description.trim().length > 0) && (
               <Text style={styles.ctaHint}>Describí todos los marcadores para continuar</Text>
             )}
             <TouchableOpacity
@@ -494,7 +492,7 @@ const styles = StyleSheet.create({
     borderRadius: 24, overflow: 'hidden',
     backgroundColor: colors.chip, minHeight: 240,
   },
-  photo: { width: '100%', aspectRatio: 4 / 3 },
+  photo: { width: '100%', height: 320 },
 
   marker: {
     position: 'absolute', width: 30, height: 30, borderRadius: 15,

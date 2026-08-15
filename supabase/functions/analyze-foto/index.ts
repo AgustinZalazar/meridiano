@@ -6,12 +6,15 @@ const corsHeaders = {
 };
 
 Deno.serve(async (req) => {
+  console.log('[analyze-foto] incoming:', req.method);
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
     const authHeader = req.headers.get('Authorization');
+    console.log('[analyze-foto] has auth header:', !!authHeader);
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'No autorizado' }), {
         status: 401,
@@ -26,6 +29,7 @@ Deno.serve(async (req) => {
     );
 
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    console.log('[analyze-foto] user:', user?.id ?? null, 'authError:', authError?.message ?? null);
     if (authError || !user) {
       return new Response(JSON.stringify({ error: 'Token inválido' }), {
         status: 401,
@@ -35,6 +39,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { project_id, rubro_id, type, foto_url, markers, comment } = body;
+    console.log('[analyze-foto] body fields:', { project_id, foto_url: foto_url?.slice?.(0, 60), markers_len: markers?.length });
 
     if (!foto_url || !project_id) {
       return new Response(JSON.stringify({ error: 'foto_url y project_id son requeridos' }), {
@@ -48,12 +53,14 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Verify studio membership
-    const { data: project } = await supabaseAdmin
+    // Verify access: studio membership or project creator
+    const { data: project, error: projectErr } = await supabaseAdmin
       .from('projects')
-      .select('studio_id')
+      .select('studio_id, created_by')
       .eq('id', project_id)
-      .single<{ studio_id: string }>();
+      .single<{ studio_id: string | null; created_by: string }>();
+
+    console.log('[analyze-foto] project studio_id:', project?.studio_id ?? null, 'created_by:', project?.created_by ?? null, 'err:', projectErr?.message ?? null);
 
     if (!project) {
       return new Response(JSON.stringify({ error: 'Proyecto no encontrado' }), {
@@ -62,19 +69,28 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { data: membership } = await supabaseAdmin
-      .from('studio_members')
-      .select('role')
-      .eq('studio_id', project.studio_id)
-      .eq('user_id', user.id)
-      .single();
+    let hasAccess = project.created_by === user.id;
 
-    if (!membership) {
+    if (!hasAccess && project.studio_id) {
+      const { data: membership } = await supabaseAdmin
+        .from('studio_members')
+        .select('role')
+        .eq('studio_id', project.studio_id)
+        .eq('user_id', user.id)
+        .single();
+      hasAccess = !!membership;
+    }
+
+    console.log('[analyze-foto] hasAccess:', hasAccess);
+
+    if (!hasAccess) {
       return new Response(JSON.stringify({ error: 'Sin acceso al proyecto' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('[analyze-foto] auth ok, calling OpenAI with url:', foto_url.slice(0, 80));
 
     // Build context from markers
     const markerList: { description: string; rx: number; ry: number }[] = Array.isArray(markers) ? markers : [];
@@ -102,18 +118,6 @@ Respondé SOLO con este JSON:
 
 Especialidades válidas: albanilería, electricidad, plomería, carpintería, pintura, herrería, vidriería, HVAC, impermeabilización, estructura, general.`;
 
-    // Download the image to send as base64 (avoids GPT-4o URL access issues with Supabase storage)
-    const imgRes = await fetch(foto_url);
-    if (!imgRes.ok) throw new Error('No se pudo descargar la imagen anotada');
-    const imgBuffer = await imgRes.arrayBuffer();
-    const bytes = new Uint8Array(imgBuffer);
-    let binary = '';
-    const chunkSize = 8192;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-    }
-    const imgBase64 = btoa(binary);
-
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -129,21 +133,23 @@ Especialidades válidas: albanilería, electricidad, plomería, carpintería, pi
             content: [
               {
                 type: 'image_url',
-                image_url: { url: `data:image/png;base64,${imgBase64}`, detail: 'high' },
+                image_url: { url: foto_url, detail: 'low' },
               },
               { type: 'text', text: userPrompt },
             ],
           },
         ],
         response_format: { type: 'json_object' },
-        max_tokens: 2000,
+        max_tokens: 1000,
         temperature: 0.2,
       }),
     });
 
+    console.log('[analyze-foto] OpenAI response status:', openaiRes.status);
+
     if (!openaiRes.ok) {
       const err = await openaiRes.text();
-      throw new Error(`OpenAI error: ${err}`);
+      throw new Error(`OpenAI error ${openaiRes.status}: ${err}`);
     }
 
     const openaiData = await openaiRes.json();

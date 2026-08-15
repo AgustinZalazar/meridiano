@@ -45,7 +45,7 @@ export default function NuevoProyectoScreen() {
   }
 
   async function handleCreate() {
-    if (!canSave || !session) return;
+    if (!canSave || !session || !studio) return;
     setLoading(true);
     setError(null);
 
