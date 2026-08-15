@@ -269,43 +269,47 @@ export default function EditarFotoScreen() {
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
           {/* Photo + annotations */}
-          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.92 }} style={styles.photoWrapOuter}>
-          <View style={styles.photoWrap} onLayout={onImageLayout} {...photoResponder}>
-            <Image source={{ uri: uri ?? fallback }} style={styles.photo} resizeMode="contain" />
+          <View style={styles.photoWrapOuter}>
+            <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 0.92 }}>
+              <View style={styles.photoWrap} onLayout={onImageLayout} {...photoResponder}>
+                <Image source={{ uri: uri ?? fallback }} style={styles.photo} resizeMode="contain" />
 
-            {/* Drawing overlay — pure RN Views, no native SVG */}
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-              {strokes.map((s) => (
-                <StrokeLines key={s.id} points={s.points} color={s.color} width={s.width} />
-              ))}
-              {livePoints.length >= 2 && (
-                <StrokeLines points={livePoints} color={drawColor} width={drawWidth} />
-              )}
-            </View>
+                {/* Drawing overlay — pure RN Views, no native SVG */}
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  {strokes.map((s) => (
+                    <StrokeLines key={s.id} points={s.points} color={s.color} width={s.width} />
+                  ))}
+                  {livePoints.length >= 2 && (
+                    <StrokeLines points={livePoints} color={drawColor} width={drawWidth} />
+                  )}
+                </View>
 
-            {/* Numbered markers */}
-            {markers.map((m, index) => (
-              <TouchableOpacity
-                key={m.id}
-                style={[
-                  styles.marker,
-                  { left: m.rx * imgW - 15, top: m.ry * imgH - 15 },
-                  selectedId === m.id && styles.markerSelected,
-                ]}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  setSelectedId(m.id === selectedId ? null : m.id);
-                }}
-                onLongPress={(e) => {
-                  e.stopPropagation();
-                  removeMarker(m.id);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.markerText}>{index + 1}</Text>
-              </TouchableOpacity>
-            ))}
+                {/* Numbered markers */}
+                {markers.map((m, index) => (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[
+                      styles.marker,
+                      { left: m.rx * imgW - 15, top: m.ry * imgH - 15 },
+                      selectedId === m.id && styles.markerSelected,
+                    ]}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(m.id === selectedId ? null : m.id);
+                    }}
+                    onLongPress={(e) => {
+                      e.stopPropagation();
+                      removeMarker(m.id);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.markerText}>{index + 1}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ViewShot>
 
+            {/* Hint overlay — outside ViewShot so it's not captured */}
             {markers.length === 0 && strokes.length === 0 && livePoints.length === 0 && (
               <View style={styles.emptyOverlay} pointerEvents="none">
                 <View style={styles.emptyPill}>
@@ -321,7 +325,6 @@ export default function EditarFotoScreen() {
               </View>
             )}
           </View>
-          </ViewShot>
 
           {/* Drawing toolbar */}
           {tool === 'dibujo' && (
