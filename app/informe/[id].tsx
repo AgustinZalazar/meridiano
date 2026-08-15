@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { useStudio } from '../../lib/use-studio';
 import { supabase } from '../../lib/supabase';
@@ -150,7 +151,7 @@ export default function InformeScreen() {
     setLoading(false);
   }
 
-  function buildHtml(): string {
+  function buildHtml(fotoBase64?: string | null): string {
     if (!report) return '';
     const isOf = report.type === 'oficina';
     const dateStr = formatDate(report.created_at);
@@ -160,7 +161,9 @@ export default function InformeScreen() {
     const logoUrl = studio?.logo_url?.startsWith('https://') ? studio.logo_url : '';
     const projectImageUrl = report.projects?.image_url?.startsWith('https://') ? report.projects.image_url : '';
     const projectLogoUrl = report.projects?.logo_url?.startsWith('https://') ? report.projects.logo_url : '';
-    const fotoAnnotatedUrl = report.foto_url?.startsWith('https://') ? report.foto_url : '';
+    const fotoAnnotatedUrl = fotoBase64
+      ? `data:image/png;base64,${fotoBase64}`
+      : (report.foto_url?.startsWith('https://') ? report.foto_url : '');
 
     const framesWithUrl = frames.filter((f) => f.signedUrl);
     const framesHtml = framesWithUrl.length > 0 ? `
@@ -295,7 +298,17 @@ export default function InformeScreen() {
     if (!report) return;
     setExporting(true);
     try {
-      const { uri } = await Print.printToFileAsync({ html: buildHtml(), base64: false });
+      let fotoBase64: string | null = null;
+      if (report.foto_url?.startsWith('https://')) {
+        try {
+          const tmpPath = `${FileSystem.cacheDirectory}foto_pdf_${Date.now()}.png`;
+          const dl = await FileSystem.downloadAsync(report.foto_url, tmpPath);
+          if (dl.status === 200) {
+            fotoBase64 = await FileSystem.readAsStringAsync(dl.uri, { encoding: FileSystem.EncodingType.Base64 });
+          }
+        } catch { /* skip — fallback to URL */ }
+      }
+      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64), base64: false });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Exportar informe' });
     } catch {
       Alert.alert('Error', 'No se pudo generar el PDF.');
@@ -527,6 +540,14 @@ export default function InformeScreen() {
               {report?.note && (
                 <View style={styles.pdfNote}>
                   <Text style={styles.pdfNoteText}>"{report.note}"</Text>
+                </View>
+              )}
+
+              {/* Foto anotada */}
+              {report?.foto_url && (
+                <View style={styles.pdfFotoSection}>
+                  <Text style={styles.pdfFotoLabel}>FOTO CON INDICACIONES</Text>
+                  <Image source={{ uri: report.foto_url }} style={styles.pdfFotoImg} resizeMode="contain" />
                 </View>
               )}
 
@@ -820,6 +841,10 @@ const styles = StyleSheet.create({
 
   pdfNote: { borderLeftWidth: 3, borderLeftColor: '#D97757', paddingLeft: 12, paddingVertical: 8, backgroundColor: '#FFFBF8', borderRadius: 4, marginBottom: 14 },
   pdfNoteText: { fontFamily: fonts.archivo.semibold, fontSize: 11, color: '#555', fontStyle: 'italic' },
+
+  pdfFotoSection: { marginVertical: 14 },
+  pdfFotoLabel: { fontFamily: fonts.mono.regular, fontSize: 8, letterSpacing: 1, textTransform: 'uppercase', color: '#888', marginBottom: 8, fontWeight: '700' },
+  pdfFotoImg: { width: '100%', aspectRatio: 4 / 3, borderRadius: 8, backgroundColor: '#F0EDE8' },
 
   pdfTableHeader: { flexDirection: 'row', backgroundColor: '#12151A', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, marginBottom: 2 },
   pdfThText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.5, color: '#FFFFFF', textTransform: 'uppercase' },
