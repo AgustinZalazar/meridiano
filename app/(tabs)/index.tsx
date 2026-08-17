@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator, TextInput, Animated } from 'react-native';
 
 const LOGO_SRC = require('../../assets/icon.png');
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -23,9 +23,27 @@ const FILTERS = ['Todos', 'En curso'];
 function StatusPill({ rubros }: { rubros: { status: string }[] }) {
   const active = rubros.some((r) => r.status === 'en_curso');
   const activeCount = rubros.filter((r) => r.status === 'en_curso').length;
+  const pulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!active) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 0.3, duration: 850, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 850, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [active]);
+
   return (
     <View style={[styles.statusPill, active && styles.statusPillActive]}>
-      <View style={[styles.pillDot, active ? styles.pillDotActive : styles.pillDotInactive]} />
+      <Animated.View style={[
+        styles.pillDot,
+        active ? styles.pillDotActive : styles.pillDotInactive,
+        active && { opacity: pulse },
+      ]} />
       <Text style={[styles.pillText, active && styles.pillTextActive]}>
         {active ? `${activeCount} en curso` : 'Pausado'}
       </Text>
@@ -33,23 +51,52 @@ function StatusPill({ rubros }: { rubros: { status: string }[] }) {
   );
 }
 
-function ProjectCard({ project, onPress }: { project: DbProject; onPress: () => void }) {
+function SearchBarFade({ children }: { children: any }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+  }, []);
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.cardImageSlot}>
-        {project.image_url
-          ? <Image source={{ uri: project.image_url }} style={styles.cardImage} />
-          : <ProjectPlaceholder variant="card" />
-        }
-      </View>
-      <View style={styles.cardBody}>
-        <Text style={styles.cardName}>{project.name}</Text>
-        <View style={styles.cardFooter}>
-          <StatusPill rubros={project.rubros} />
-          <Feather name="chevron-right" size={17} color={colors.faint} />
+    <Animated.View style={{
+      flex: 1,
+      opacity: anim,
+      transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+    }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+function ProjectCard({ project, onPress, index }: { project: DbProject; onPress: () => void; index: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(index * 60),
+      Animated.spring(anim, { toValue: 1, tension: 80, friction: 9, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={{
+      opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+    }}>
+      <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+        <View style={styles.cardImageSlot}>
+          {project.image_url
+            ? <Image source={{ uri: project.image_url }} style={styles.cardImage} />
+            : <ProjectPlaceholder variant="card" />
+          }
         </View>
-      </View>
-    </TouchableOpacity>
+        <View style={styles.cardBody}>
+          <Text style={styles.cardName}>{project.name}</Text>
+          <View style={styles.cardFooter}>
+            <StatusPill rubros={project.rubros} />
+            <Feather name="chevron-right" size={17} color={colors.faint} />
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -105,6 +152,7 @@ export default function ProyectosScreen() {
     <View style={[styles.safe, { paddingTop: insets.top }]}>
       <View style={styles.topBar}>
         {searchVisible ? (
+          <SearchBarFade>
           <View style={styles.searchBar}>
             <Feather name="search" size={15} color={colors.gris} />
             <TextInput
@@ -122,6 +170,7 @@ export default function ProyectosScreen() {
               <Feather name="x" size={16} color={colors.gris} />
             </TouchableOpacity>
           </View>
+          </SearchBarFade>
         ) : (
           <>
             <View style={styles.brand}>
@@ -197,10 +246,11 @@ export default function ProyectosScreen() {
             )}
           </View>
         ) : (
-          filtered.map((p) => (
+          filtered.map((p, i) => (
             <ProjectCard
               key={p.id}
               project={p}
+              index={i}
               onPress={() => router.push(`/proyecto/${p.id}`)}
             />
           ))

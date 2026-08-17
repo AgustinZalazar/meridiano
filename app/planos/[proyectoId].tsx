@@ -1,7 +1,10 @@
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { colors, spacing, fonts } from '../../constants/theme';
 
 interface Plano {
@@ -10,14 +13,15 @@ interface Plano {
   type: string;
   date: string;
   imageUri: string;
+  pdfUrl?: string;
 }
 
 const MOCK_PLANOS: Record<string, { projectName: string; planos: Plano[] }> = {
   '1': {
     projectName: 'Torre Palermo',
     planos: [
-      { id: 'p1', name: 'Planta Baja', type: 'ARQUITECTURA', date: 'Actualizado 15/07/2026', imageUri: 'https://picsum.photos/id/180/300/200' },
-      { id: 'p2', name: 'Planta Tipo — Pisos 1-8', type: 'ARQUITECTURA', date: 'Actualizado 10/07/2026', imageUri: 'https://picsum.photos/id/188/300/200' },
+      { id: 'p1', name: 'Planta Baja', type: 'ARQUITECTURA', date: 'Actualizado 15/07/2026', imageUri: 'https://picsum.photos/id/180/300/200', pdfUrl: 'https://www.w3.org/WAI/WCAG21/Techniques/pdf/PDF1.pdf' },
+      { id: 'p2', name: 'Planta Tipo — Pisos 1-8', type: 'ARQUITECTURA', date: 'Actualizado 10/07/2026', imageUri: 'https://picsum.photos/id/188/300/200', pdfUrl: 'https://www.w3.org/WAI/WCAG21/Techniques/pdf/PDF2.pdf' },
       { id: 'p3', name: 'Instalación Eléctrica PB', type: 'INSTALACIONES', date: 'Actualizado 08/07/2026', imageUri: 'https://picsum.photos/id/193/300/200' },
       { id: 'p4', name: 'Instalación Sanitaria', type: 'INSTALACIONES', date: 'Actualizado 02/07/2026', imageUri: 'https://picsum.photos/id/201/300/200' },
       { id: 'p5', name: 'Estructura Cimentación', type: 'ESTRUCTURA', date: 'Actualizado 28/06/2026', imageUri: 'https://picsum.photos/id/206/300/200' },
@@ -32,14 +36,24 @@ const MOCK_PLANOS: Record<string, { projectName: string; planos: Plano[] }> = {
   },
 };
 
-function PlanoCard({ plano, onPress }: { plano: Plano; onPress: () => void }) {
+function PlanoCard({ plano, onPress, isLoading }: { plano: Plano; onPress: () => void; isLoading: boolean }) {
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85} disabled={isLoading}>
       <View style={styles.thumbnail}>
         <Image source={{ uri: plano.imageUri }} style={styles.thumbnailImage} resizeMode="cover" />
         <View style={styles.typeTag}>
           <Text style={styles.typeTagText}>{plano.type}</Text>
         </View>
+        {plano.pdfUrl && (
+          <View style={styles.pdfBadge}>
+            <Feather name="file-text" size={10} color="rgba(255,255,255,0.9)" />
+          </View>
+        )}
+        {isLoading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          </View>
+        )}
       </View>
       <View style={styles.cardInfo}>
         <Text style={styles.cardName}>{plano.name}</Text>
@@ -53,6 +67,26 @@ export default function PlanosScreen() {
   const router = useRouter();
   const { proyectoId } = useLocalSearchParams<{ proyectoId: string }>();
   const data = MOCK_PLANOS[proyectoId ?? '1'] ?? MOCK_PLANOS['1'];
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  async function openPlano(plano: Plano) {
+    if (!plano.pdfUrl) {
+      Alert.alert('Sin PDF', 'Este plano no tiene un archivo PDF asociado.');
+      return;
+    }
+
+    setLoadingId(plano.id);
+    try {
+      const dest = `${FileSystem.cacheDirectory}plano_${plano.id}_${Date.now()}.pdf`;
+      const { status } = await FileSystem.downloadAsync(plano.pdfUrl, dest);
+      if (status !== 200) throw new Error('No se pudo descargar el archivo.');
+      await Sharing.shareAsync(dest, { mimeType: 'application/pdf', dialogTitle: plano.name });
+    } catch {
+      Alert.alert('Error', 'No se pudo abrir el plano.');
+    } finally {
+      setLoadingId(null);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -75,7 +109,11 @@ export default function PlanosScreen() {
         data={data.planos}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <PlanoCard plano={item} onPress={() => router.push(`/plano/${item.id}`)} />
+          <PlanoCard
+            plano={item}
+            isLoading={loadingId === item.id}
+            onPress={() => openPlano(item)}
+          />
         )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -180,6 +218,20 @@ const styles = StyleSheet.create({
     fontSize: 8.5,
     letterSpacing: 0.5,
     color: '#FFFFFF',
+  },
+  pdfBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(18,21,26,0.6)',
+    borderRadius: 8,
+    padding: 5,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(18,21,26,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardInfo: {
     padding: 12,

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
-  Image, LayoutChangeEvent, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  Image, LayoutChangeEvent, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Animated,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -77,6 +77,47 @@ function StrokeLines({ points, color, width }: { points: Pt[]; color: string; wi
         );
       })}
     </>
+  );
+}
+
+// ─── Animated marker ─────────────────────────────────────────────────────────
+
+function AnimatedMarkerDot({ marker, index, isSelected, imgW, imgH, onPress, onLongPress }: {
+  marker: Marker; index: number; isSelected: boolean;
+  imgW: number; imgH: number;
+  onPress: () => void; onLongPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(scale, { toValue: 1, tension: 180, friction: 7, useNativeDriver: true }).start();
+  }, []);
+
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: isSelected ? 1.18 : 1,
+      tension: 80,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  }, [isSelected]);
+
+  return (
+    <Animated.View style={{
+      position: 'absolute',
+      left: marker.rx * imgW - 15,
+      top: marker.ry * imgH - 15,
+      transform: [{ scale }],
+    }}>
+      <TouchableOpacity
+        style={[styles.markerDot, isSelected && styles.markerDotSelected]}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.markerText}>{index + 1}</Text>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -286,25 +327,16 @@ export default function EditarFotoScreen() {
 
                 {/* Numbered markers */}
                 {markers.map((m, index) => (
-                  <TouchableOpacity
+                  <AnimatedMarkerDot
                     key={m.id}
-                    style={[
-                      styles.marker,
-                      { left: m.rx * imgW - 15, top: m.ry * imgH - 15 },
-                      selectedId === m.id && styles.markerSelected,
-                    ]}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      setSelectedId(m.id === selectedId ? null : m.id);
-                    }}
-                    onLongPress={(e) => {
-                      e.stopPropagation();
-                      removeMarker(m.id);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.markerText}>{index + 1}</Text>
-                  </TouchableOpacity>
+                    marker={m}
+                    index={index}
+                    isSelected={selectedId === m.id}
+                    imgW={imgW}
+                    imgH={imgH}
+                    onPress={() => setSelectedId(m.id === selectedId ? null : m.id)}
+                    onLongPress={() => removeMarker(m.id)}
+                  />
                 ))}
               </View>
             </ViewShot>
@@ -497,13 +529,13 @@ const styles = StyleSheet.create({
   },
   photo: { width: '100%', height: 320 },
 
-  marker: {
-    position: 'absolute', width: 30, height: 30, borderRadius: 15,
+  markerDot: {
+    width: 30, height: 30, borderRadius: 15,
     backgroundColor: colors.crema, alignItems: 'center', justifyContent: 'center',
     borderWidth: 2.5, borderColor: '#FFFFFF',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 5, elevation: 7,
   },
-  markerSelected: { backgroundColor: colors.arena, transform: [{ scale: 1.18 }] },
+  markerDotSelected: { backgroundColor: colors.arena },
   markerText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: '#FFFFFF' },
 
   emptyOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },

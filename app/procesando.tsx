@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+
+function ScaleIn({ children }: { children: any }) {
+  const scale = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(scale, { toValue: 1, tension: 180, friction: 8, useNativeDriver: true }).start();
+  }, []);
+  return <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>;
+}
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -48,22 +56,35 @@ function StageRow({
 }: {
   stage: Stage; status: StageStatus; progress?: number;
 }) {
+  const rowScale  = useRef(new Animated.Value(1)).current;
+  const prevStatus = useRef(status);
+
+  useEffect(() => {
+    if (prevStatus.current === 'pending' && status === 'active') {
+      Animated.sequence([
+        Animated.timing(rowScale, { toValue: 1.03, duration: 120, useNativeDriver: true }),
+        Animated.spring(rowScale, { toValue: 1, tension: 120, friction: 7, useNativeDriver: true }),
+      ]).start();
+    }
+    prevStatus.current = status;
+  }, [status]);
+
   const isDone    = status === 'done';
   const isActive  = status === 'active';
   const isPending = status === 'pending';
   const isError   = status === 'error';
 
   return (
-    <View style={[styles.stageRow, isPending && styles.stageRowPending]}>
+    <Animated.View style={[styles.stageRow, isPending && styles.stageRowPending, { transform: [{ scale: rowScale }] }]}>
       <View style={[
         styles.stageCircle,
         isPending && styles.stageCirclePending,
         isError && styles.stageCircleError,
       ]}>
-        {isDone   && <Feather name="check" size={13} color="#FFFFFF" />}
+        {isDone   && <ScaleIn><Feather name="check" size={13} color="#FFFFFF" /></ScaleIn>}
         {isActive && <PulsingDots />}
         {isPending && <Feather name="minus" size={11} color={colors.faint} />}
-        {isError  && <Feather name="x" size={13} color="#FFFFFF" />}
+        {isError  && <ScaleIn><Feather name="x" size={13} color="#FFFFFF" /></ScaleIn>}
       </View>
       <View style={{ flex: 1 }}>
         <Text style={[styles.stageLabel, isPending && styles.stageLabelPending]}>
@@ -75,7 +96,7 @@ function StageRow({
           </View>
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -231,6 +252,7 @@ export default function ProcesandoScreen() {
   }, [studio?.id, videoUri]);
 
   function getStatus(index: number): StageStatus {
+    if (done) return 'done';
     if (errorMsg && index === stageIndex) return 'error';
     if (index < stageIndex)  return 'done';
     if (index === stageIndex) return 'active';
