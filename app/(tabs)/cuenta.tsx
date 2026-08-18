@@ -278,6 +278,24 @@ export default function CuentaScreen() {
           </View>
         </View>
 
+        {/* Configuración */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>CONFIGURACIÓN</Text>
+          <View style={styles.teamList}>
+            <TouchableOpacity
+              style={styles.memberRow}
+              onPress={() => router.push('/configuracion-informe')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.pendingAvatar, { backgroundColor: colors.chip }]}>
+                <Feather name="file-text" size={14} color={colors.crema} />
+              </View>
+              <Text style={styles.memberName}>Logo del informe</Text>
+              <Feather name="chevron-right" size={16} color={colors.faint} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Logout */}
         <View style={styles.section}>
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>

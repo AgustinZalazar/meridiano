@@ -56,6 +56,7 @@ function RootLayoutNav() {
       <Stack.Screen name="informe-dia/agregar" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="invitar-miembro" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="studio/crear" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="configuracion-informe" options={{ animation: 'slide_from_right' }} />
     </Stack>
   );
 }

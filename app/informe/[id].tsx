@@ -121,6 +121,10 @@ export default function InformeScreen() {
   const [changeSheetVisible, setChangeSheetVisible] = useState(false);
   const [changeRequest, setChangeRequest] = useState('');
   const [requesting, setRequesting] = useState(false);
+  const [lightboxUri, setLightboxUri] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<{ id: string; description: string } | null>(null);
+  const [editText, setEditText] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     if (!id || id === 'demo') { setLoading(false); return; }
@@ -317,6 +321,17 @@ export default function InformeScreen() {
     }
   }
 
+  async function saveItemDescription() {
+    if (!editingItem || !editText.trim()) return;
+    setSavingEdit(true);
+    try {
+      await supabase.from('pending_items').update({ description: editText.trim() }).eq('id', editingItem.id);
+      setItems((prev) => prev.map((item) => item.id === editingItem.id ? { ...item, description: editText.trim() } : item));
+      setEditingItem(null);
+    } catch {}
+    setSavingEdit(false);
+  }
+
   async function handleRequestChange() {
     if (!changeRequest.trim() || !report) return;
     setRequesting(true);
@@ -376,14 +391,19 @@ export default function InformeScreen() {
         <View style={styles.summaryCard}>
           {studio && (
             <View style={styles.studioBrand}>
-              <View style={styles.studioLogoSlot}>
+              <TouchableOpacity
+                style={styles.studioLogoSlot}
+                activeOpacity={studio.logo_url ? 0.75 : 1}
+                onPress={() => studio.logo_url && setLightboxUri(studio.logo_url)}
+                disabled={!studio.logo_url}
+              >
                 {studio.logo_url
                   ? <Image source={{ uri: studio.logo_url }} style={styles.studioLogoImage} />
                   : <Text style={styles.studioLogoInitials}>
                       {studio.name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()}
                     </Text>
                 }
-              </View>
+              </TouchableOpacity>
               <Text style={styles.studioNameText}>{studio.name}</Text>
             </View>
           )}
@@ -413,7 +433,9 @@ export default function InformeScreen() {
         {report?.foto_url && (
           <View style={styles.fotoBlock}>
             <Text style={styles.fotoLabel}>FOTO CON INDICACIONES</Text>
+            <TouchableOpacity activeOpacity={0.9} onPress={() => setLightboxUri(report.foto_url!)}>
             <Image source={{ uri: report.foto_url }} style={styles.fotoImage} resizeMode="contain" />
+          </TouchableOpacity>
           </View>
         )}
 
@@ -495,7 +517,9 @@ export default function InformeScreen() {
               <View style={styles.pdfPageHeader}>
                 <View style={styles.pdfBrandRow}>
                   {studio?.logo_url ? (
-                    <Image source={{ uri: studio.logo_url }} style={styles.pdfLogo} />
+                    <TouchableOpacity activeOpacity={0.85} onPress={() => setLightboxUri(studio.logo_url!)}>
+                      <Image source={{ uri: studio.logo_url }} style={styles.pdfLogo} />
+                    </TouchableOpacity>
                   ) : null}
                   <View>
                     <Text style={styles.pdfBrandName}>MERIDIANO</Text>
@@ -510,10 +534,19 @@ export default function InformeScreen() {
               <View style={styles.pdfHeaderDivider} />
 
               {/* Title */}
-              <Text style={styles.pdfDocTitle}>
-                {isOficina ? 'Observación Oficina Técnica' : 'Informe de Contratistas'}
-              </Text>
-              <Text style={styles.pdfDocSubtitle}>{report?.projects?.name ?? '—'}</Text>
+              <View style={styles.pdfTitleRow}>
+                {report?.projects?.logo_url ? (
+                  <TouchableOpacity activeOpacity={0.85} onPress={() => setLightboxUri(report.projects!.logo_url!)}>
+                    <Image source={{ uri: report.projects.logo_url }} style={styles.pdfProjectLogo} resizeMode="contain" />
+                  </TouchableOpacity>
+                ) : null}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pdfDocTitle}>
+                    {isOficina ? 'Observación Oficina Técnica' : 'Informe de Contratistas'}
+                  </Text>
+                  <Text style={styles.pdfDocSubtitle}>{report?.projects?.name ?? '—'}</Text>
+                </View>
+              </View>
 
               {/* Badge */}
               <View style={[styles.pdfBadge, isOficina && styles.pdfBadgeOficina]}>
@@ -551,6 +584,25 @@ export default function InformeScreen() {
                 </View>
               )}
 
+              {/* Frames strip */}
+              {frames.length > 0 && (
+                <View style={styles.pdfFramesSection}>
+                  <Text style={styles.pdfFotoLabel}>CAPTURAS DEL VIDEO</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                    {frames.map((f) => (
+                      <TouchableOpacity key={f.id} activeOpacity={0.85} onPress={() => f.signedUrl && setLightboxUri(f.signedUrl)}>
+                        <View style={styles.pdfFrameThumb}>
+                          {f.signedUrl && <Image source={{ uri: f.signedUrl }} style={styles.pdfFrameImg} resizeMode="cover" />}
+                          <Text style={styles.frameTimestamp}>
+                            {Math.floor(f.timestamp_sec / 60)}:{String(f.timestamp_sec % 60).padStart(2, '0')}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
               {/* Table header */}
               <View style={styles.pdfTableHeader}>
                 <Text style={[styles.pdfThText, { width: 88 }]}>ESPECIALIDAD</Text>
@@ -558,13 +610,21 @@ export default function InformeScreen() {
                 <Text style={[styles.pdfThText, { width: 72 }]}>ESTADO</Text>
               </View>
 
-              {/* Table rows */}
+              {/* Table rows — tap to edit */}
               {items.map((item, i) => (
-                <View key={item.id} style={[styles.pdfTableRow, i % 2 === 1 && styles.pdfTableRowAlt]}>
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.pdfTableRow, i % 2 === 1 && styles.pdfTableRowAlt]}
+                  onPress={() => { setEditingItem({ id: item.id, description: item.description }); setEditText(item.description); }}
+                  activeOpacity={0.7}
+                >
                   <Text style={[styles.pdfTdTrade, { width: 88 }]} numberOfLines={2}>{item.trade ?? '—'}</Text>
                   <Text style={[styles.pdfTdDesc, { flex: 1 }]}>{item.description}</Text>
-                  <Text style={[styles.pdfTdStatus, { width: 72 }]}>{item.status}</Text>
-                </View>
+                  <View style={{ width: 72, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                    <Text style={styles.pdfTdStatus} numberOfLines={1}>{item.status}</Text>
+                    <Feather name="edit-2" size={8} color="#CCC" />
+                  </View>
+                </TouchableOpacity>
               ))}
 
               {items.length === 0 && (
@@ -664,6 +724,57 @@ export default function InformeScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      {/* ── Lightbox ──────────────────────────────────────────────── */}
+      <Modal visible={!!lightboxUri} transparent animationType="fade" onRequestClose={() => setLightboxUri(null)}>
+        <TouchableOpacity style={styles.lightboxBg} activeOpacity={1} onPress={() => setLightboxUri(null)}>
+          {!!lightboxUri && (
+            <Image source={{ uri: lightboxUri }} style={styles.lightboxImg} resizeMode="contain" />
+          )}
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Edit Description Sheet ────────────────────────────────── */}
+      <Modal visible={!!editingItem} transparent animationType="slide" onRequestClose={() => setEditingItem(null)}>
+        <KeyboardAvoidingView style={styles.sheetOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setEditingItem(null)} />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={styles.sheetTitle}>Editar pendiente</Text>
+                <Text style={styles.sheetSubtitle}>El cambio se guarda en el informe</Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditingItem(null)} activeOpacity={0.7}>
+                <Feather name="x" size={18} color={colors.gris} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.sheetInputWrap}>
+              <TextInput
+                style={styles.sheetInput}
+                value={editText}
+                onChangeText={setEditText}
+                multiline
+                numberOfLines={4}
+                selectionColor={colors.arena}
+                autoFocus
+                textAlignVertical="top"
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.sheetBtn, (!editText.trim() || savingEdit) && styles.sheetBtnDisabled]}
+              onPress={saveItemDescription}
+              disabled={!editText.trim() || savingEdit}
+              activeOpacity={0.85}
+            >
+              {savingEdit
+                ? <ActivityIndicator color="#FFF" size="small" />
+                : <Text style={styles.sheetBtnText}>Guardar cambio</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -904,4 +1015,22 @@ const styles = StyleSheet.create({
   },
   sheetBtnDisabled: { opacity: 0.35 },
   sheetBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
+
+  // ── Lightbox ─────────────────────────────────────────────────────
+  lightboxBg: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  lightboxImg: { width: '100%', height: '80%' },
+
+  // ── PDF preview extras ────────────────────────────────────────────
+  pdfTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 3 },
+  pdfProjectLogo: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#F0EDE8', flexShrink: 0 },
+  pdfFramesSection: { marginTop: 16, marginBottom: 8, gap: 8 },
+  pdfFrameThumb: {
+    width: 100, height: 76, borderRadius: 10,
+    backgroundColor: '#F0EDE8', overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pdfFrameImg: { width: '100%', height: '100%' },
 });
