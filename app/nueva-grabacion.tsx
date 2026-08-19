@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Image,
-  Modal, FlatList, Alert,
+  FlatList, Alert,
 } from 'react-native';
+import { BottomSheet } from '../components/BottomSheet';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -54,10 +55,8 @@ function SearchPicker({ label, placeholder, value, items, onSelect, disabled }: 
         {!disabled && <Feather name="chevron-down" size={16} color={colors.gris} />}
       </TouchableOpacity>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => { setOpen(false); setQuery(''); }}>
-        <View style={s.sheetWrapper}>
-          <TouchableOpacity style={s.backdrop} onPress={() => { setOpen(false); setQuery(''); }} activeOpacity={1} />
-          <View style={[s.sheet, { paddingBottom: insets.bottom + 8 }]}>
+      <BottomSheet visible={open} onClose={() => { setOpen(false); setQuery(''); }}>
+        <View style={[s.sheet, { paddingBottom: insets.bottom + 8 }]}>
             {/* Handle */}
             <View style={s.handle} />
 
@@ -117,8 +116,7 @@ function SearchPicker({ label, placeholder, value, items, onSelect, disabled }: 
               }
             />
           </View>
-        </View>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -512,9 +510,6 @@ const s = StyleSheet.create({
     borderLeftWidth: 3, borderLeftColor: colors.arena,
   },
 
-  // Bottom sheet modal
-  sheetWrapper: { flex: 1, backgroundColor: 'rgba(18,21,26,0.45)' },
-  backdrop: { flex: 1 },
   sheet: {
     backgroundColor: colors.panel,
     borderTopLeftRadius: 28, borderTopRightRadius: 28,

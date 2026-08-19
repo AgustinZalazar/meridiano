@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
-  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, Modal, TextInput,
 } from 'react-native';
+import { BottomSheet } from '../../components/BottomSheet';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -670,60 +671,49 @@ export default function InformeScreen() {
       </Modal>
 
       {/* ── Change Request Sheet ──────────────────────────────────────── */}
-      <Modal
-        visible={changeSheetVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setChangeSheetVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.sheetOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setChangeSheetVisible(false)} />
-          <View style={styles.sheet}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.sheetHeader}>
-              <View>
-                <Text style={styles.sheetTitle}>Solicitar cambios</Text>
-                <Text style={styles.sheetSubtitle}>La IA revisará y ajustará el informe</Text>
-              </View>
-              <TouchableOpacity onPress={() => setChangeSheetVisible(false)} activeOpacity={0.7}>
-                <Feather name="x" size={18} color={colors.gris} />
-              </TouchableOpacity>
+      <BottomSheet visible={changeSheetVisible} onClose={() => setChangeSheetVisible(false)} avoidKeyboard>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View>
+              <Text style={styles.sheetTitle}>Solicitar cambios</Text>
+              <Text style={styles.sheetSubtitle}>La IA revisará y ajustará el informe</Text>
             </View>
-
-            <View style={styles.sheetInputWrap}>
-              <TextInput
-                style={styles.sheetInput}
-                value={changeRequest}
-                onChangeText={setChangeRequest}
-                placeholder="Ej: El ítem del tablero eléctrico ya fue resuelto. Agregar observación sobre humedad en muro norte..."
-                placeholderTextColor={colors.faint}
-                multiline
-                numberOfLines={5}
-                selectionColor={colors.arena}
-                autoFocus
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.sheetBtn, (!changeRequest.trim() || requesting) && styles.sheetBtnDisabled]}
-              onPress={handleRequestChange}
-              activeOpacity={0.85}
-              disabled={!changeRequest.trim() || requesting}
-            >
-              {requesting
-                ? <ActivityIndicator color="#FFF" size="small" />
-                : <>
-                    <Feather name="cpu" size={15} color="#FFF" />
-                    <Text style={styles.sheetBtnText}>Aplicar cambios con IA</Text>
-                  </>
-              }
+            <TouchableOpacity onPress={() => setChangeSheetVisible(false)} activeOpacity={0.7}>
+              <Feather name="x" size={18} color={colors.gris} />
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+
+          <View style={styles.sheetInputWrap}>
+            <TextInput
+              style={styles.sheetInput}
+              value={changeRequest}
+              onChangeText={setChangeRequest}
+              placeholder="Ej: El ítem del tablero eléctrico ya fue resuelto. Agregar observación sobre humedad en muro norte..."
+              placeholderTextColor={colors.faint}
+              multiline
+              numberOfLines={5}
+              selectionColor={colors.arena}
+              autoFocus
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.sheetBtn, (!changeRequest.trim() || requesting) && styles.sheetBtnDisabled]}
+            onPress={handleRequestChange}
+            activeOpacity={0.85}
+            disabled={!changeRequest.trim() || requesting}
+          >
+            {requesting
+              ? <ActivityIndicator color="#FFF" size="small" />
+              : <>
+                  <Feather name="cpu" size={15} color="#FFF" />
+                  <Text style={styles.sheetBtnText}>Aplicar cambios con IA</Text>
+                </>
+            }
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
       {/* ── Lightbox ──────────────────────────────────────────────── */}
       <Modal visible={!!lightboxUri} transparent animationType="fade" onRequestClose={() => setLightboxUri(null)}>
         <TouchableOpacity style={styles.lightboxBg} activeOpacity={1} onPress={() => setLightboxUri(null)}>
@@ -734,46 +724,43 @@ export default function InformeScreen() {
       </Modal>
 
       {/* ── Edit Description Sheet ────────────────────────────────── */}
-      <Modal visible={!!editingItem} transparent animationType="slide" onRequestClose={() => setEditingItem(null)}>
-        <KeyboardAvoidingView style={styles.sheetOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setEditingItem(null)} />
-          <View style={styles.sheet}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.sheetHeader}>
-              <View>
-                <Text style={styles.sheetTitle}>Editar pendiente</Text>
-                <Text style={styles.sheetSubtitle}>El cambio se guarda en el informe</Text>
-              </View>
-              <TouchableOpacity onPress={() => setEditingItem(null)} activeOpacity={0.7}>
-                <Feather name="x" size={18} color={colors.gris} />
-              </TouchableOpacity>
+      <BottomSheet visible={!!editingItem} onClose={() => setEditingItem(null)} avoidKeyboard>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View>
+              <Text style={styles.sheetTitle}>Editar pendiente</Text>
+              <Text style={styles.sheetSubtitle}>El cambio se guarda en el informe</Text>
             </View>
-            <View style={styles.sheetInputWrap}>
-              <TextInput
-                style={styles.sheetInput}
-                value={editText}
-                onChangeText={setEditText}
-                multiline
-                numberOfLines={4}
-                selectionColor={colors.arena}
-                autoFocus
-                textAlignVertical="top"
-              />
-            </View>
-            <TouchableOpacity
-              style={[styles.sheetBtn, (!editText.trim() || savingEdit) && styles.sheetBtnDisabled]}
-              onPress={saveItemDescription}
-              disabled={!editText.trim() || savingEdit}
-              activeOpacity={0.85}
-            >
-              {savingEdit
-                ? <ActivityIndicator color="#FFF" size="small" />
-                : <Text style={styles.sheetBtnText}>Guardar cambio</Text>
-              }
+            <TouchableOpacity onPress={() => setEditingItem(null)} activeOpacity={0.7}>
+              <Feather name="x" size={18} color={colors.gris} />
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          <View style={styles.sheetInputWrap}>
+            <TextInput
+              style={styles.sheetInput}
+              value={editText}
+              onChangeText={setEditText}
+              multiline
+              numberOfLines={4}
+              selectionColor={colors.arena}
+              autoFocus
+              textAlignVertical="top"
+            />
+          </View>
+          <TouchableOpacity
+            style={[styles.sheetBtn, (!editText.trim() || savingEdit) && styles.sheetBtnDisabled]}
+            onPress={saveItemDescription}
+            disabled={!editText.trim() || savingEdit}
+            activeOpacity={0.85}
+          >
+            {savingEdit
+              ? <ActivityIndicator color="#FFF" size="small" />
+              : <Text style={styles.sheetBtnText}>Guardar cambio</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
 
     </SafeAreaView>
   );
@@ -987,8 +974,6 @@ const styles = StyleSheet.create({
   previewBtnPrimaryText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: '#FFFFFF' },
 
   // ── Change request sheet ─────────────────────────────────────────
-  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
-  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
     backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingHorizontal: spacing.xl, paddingBottom: 36, paddingTop: 12, gap: spacing.lg,

@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, ListRenderItem, Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, ListRenderItem, Alert, ScrollView, TextInput } from 'react-native';
+import { BottomSheet } from '../../components/BottomSheet';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -12,9 +13,16 @@ import { ProjectPlaceholder } from '../../components/ProjectPlaceholder';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type DbRubroStatus = 'sin_iniciar' | 'en_curso' | 'completada';
+type ProjectStatus = 'activo' | 'finalizado' | 'pausado';
 type PendingStatus = 'pendiente' | 'en_revision' | 'resuelto';
 type ReportType = 'contratistas' | 'oficina';
 type Tab = 'rubros' | 'pendientes' | 'planos';
+
+const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string; color: string }[] = [
+  { value: 'activo',     label: 'En construcción', color: colors.crema   },
+  { value: 'pausado',    label: 'Pausado',          color: colors.gris    },
+  { value: 'finalizado', label: 'Finalizado',       color: colors.success },
+];
 
 interface DbProject {
   id: string;
@@ -23,6 +31,7 @@ interface DbProject {
   logo_url: string | null;
   start_date: string | null;
   end_date: string | null;
+  status: ProjectStatus | null;
 }
 
 interface DbRubro {
@@ -42,6 +51,7 @@ interface DbPendingItem {
   trade: string | null;
   status: PendingStatus;
   reports: { type: ReportType } | null;
+  created_at: string;
 }
 
 interface DbPlano {
@@ -62,6 +72,17 @@ const STATUS_MAP: Record<DbRubroStatus, { label: string; active: boolean }> = {
   en_curso:    { label: 'En curso',    active: true  },
   completada:  { label: 'Entregada',   active: false },
 };
+
+function formatItemDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: 'short',
+    ...(!sameYear && { year: 'numeric' }),
+  }).replace('.', '').toUpperCase();
+}
 
 function formatStartDate(d: string | null): string {
   if (!d) return 'Sin fecha';
@@ -152,6 +173,7 @@ function PendienteCard({ item, rubroName, onPress }: { item: DbPendingItem; rubr
           <View style={[styles.statusChip, { backgroundColor: s.bg }]}>
             <Text style={[styles.statusChipText, { color: s.color }]}>{PENDING_STATUS_LABEL[item.status]}</Text>
           </View>
+          <Text style={styles.pendDate}>{formatItemDate(item.created_at)}</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -178,6 +200,10 @@ export default function ProyectoScreen() {
   const [planoType, setPlanoType] = useState<typeof PLAN_TYPES[number]>('ARQUITECTURA');
   const [pickedFile, setPickedFile] = useState<{ uri: string; name: string; mimeType: string } | null>(null);
   const [uploadingPlano, setUploadingPlano] = useState(false);
+  const [pendRubroFilter, setPendRubroFilter] = useState<string | null>(null);
+  const [projectStatus, setProjectStatus] = useState<ProjectStatus | null>(null);
+  const [statusSheetVisible, setStatusSheetVisible] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -185,12 +211,15 @@ export default function ProyectoScreen() {
       setLoading(true);
 
       Promise.all([
-        supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date').eq('id', projectId).single(),
+        supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date, status').eq('id', projectId).single(),
         supabase.from('rubros').select('id, code, name, contractor, status, start_date, end_date').eq('project_id', projectId).order('created_at'),
-        supabase.from('pending_items').select('id, description, rubro_id, trade, status, reports(type)').eq('project_id', projectId),
+        supabase.from('pending_items').select('id, description, rubro_id, trade, status, reports(type), created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
         supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
       ]).then(([projRes, rubrosRes, pendRes, planosRes]) => {
-        if (projRes.data) setProject(projRes.data as DbProject);
+        if (projRes.data) {
+          setProject(projRes.data as DbProject);
+          setProjectStatus((projRes.data as DbProject).status ?? null);
+        }
         setRubros((rubrosRes.data as DbRubro[]) ?? []);
         setPendingItems((pendRes.data as DbPendingItem[]) ?? []);
         setPlanos((planosRes.data as DbPlano[]) ?? []);
@@ -259,6 +288,18 @@ export default function ProyectoScreen() {
     }
   }
 
+  async function handleStatusChange(status: ProjectStatus) {
+    if (!projectId) return;
+    setSavingStatus(true);
+    try {
+      await supabase.from('projects').update({ status }).eq('id', projectId);
+      setProjectStatus(status);
+    } finally {
+      setSavingStatus(false);
+      setStatusSheetVisible(false);
+    }
+  }
+
   const rubroById = Object.fromEntries(rubros.map((r) => [r.id, r]));
 
   const pendingCountPerRubro = pendingItems.reduce<Record<string, number>>((acc, p) => {
@@ -268,7 +309,9 @@ export default function ProyectoScreen() {
 
   const filteredPendientes = pendingItems.filter((p) => {
     const type = p.reports?.type;
-    return !type || type === pendType;
+    if (type && type !== pendType) return false;
+    if (pendRubroFilter && p.rubro_id !== pendRubroFilter) return false;
+    return true;
   });
 
   const openPendingCount = pendingItems.filter((p) => p.status === 'pendiente').length;
@@ -339,6 +382,21 @@ export default function ProyectoScreen() {
           ) : null}
           <Text style={styles.bannerEyebrow}>PROYECTO</Text>
           <Text style={styles.bannerTitle}>{project.name}</Text>
+          <TouchableOpacity
+            style={styles.bannerStatusBadge}
+            onPress={() => setStatusSheetVisible(true)}
+            activeOpacity={0.8}
+          >
+            {projectStatus ? (
+              <View style={[styles.bannerStatusDot, { backgroundColor: PROJECT_STATUS_OPTIONS.find(o => o.value === projectStatus)?.color }]} />
+            ) : (
+              <Feather name="circle" size={8} color="rgba(255,255,255,0.4)" />
+            )}
+            <Text style={styles.bannerStatusText}>
+              {PROJECT_STATUS_OPTIONS.find(o => o.value === projectStatus)?.label ?? 'Sin estado'}
+            </Text>
+            <Feather name="chevron-right" size={11} color="rgba(255,255,255,0.45)" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -437,23 +495,53 @@ export default function ProyectoScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
-            <View style={styles.pendTypeToggle}>
-              <TouchableOpacity
-                style={[styles.pendTypeBtn, pendType === 'contratistas' && styles.pendTypeBtnActive]}
-                onPress={() => setPendType('contratistas')}
-                activeOpacity={0.8}
-              >
-                <Feather name="tool" size={12} color={pendType === 'contratistas' ? '#FFFFFF' : colors.gris} />
-                <Text style={[styles.pendTypeBtnText, pendType === 'contratistas' && styles.pendTypeBtnTextActive]}>Contratistas</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.pendTypeBtn, pendType === 'oficina' && styles.pendTypeBtnActive]}
-                onPress={() => setPendType('oficina')}
-                activeOpacity={0.8}
-              >
-                <Feather name="briefcase" size={12} color={pendType === 'oficina' ? '#FFFFFF' : colors.gris} />
-                <Text style={[styles.pendTypeBtnText, pendType === 'oficina' && styles.pendTypeBtnTextActive]}>Oficina técnica</Text>
-              </TouchableOpacity>
+            <View style={styles.pendFiltersWrap}>
+              <View style={styles.pendTypeToggle}>
+                <TouchableOpacity
+                  style={[styles.pendTypeBtn, pendType === 'contratistas' && styles.pendTypeBtnActive]}
+                  onPress={() => setPendType('contratistas')}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="tool" size={12} color={pendType === 'contratistas' ? '#FFFFFF' : colors.gris} />
+                  <Text style={[styles.pendTypeBtnText, pendType === 'contratistas' && styles.pendTypeBtnTextActive]}>Contratistas</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.pendTypeBtn, pendType === 'oficina' && styles.pendTypeBtnActive]}
+                  onPress={() => setPendType('oficina')}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="briefcase" size={12} color={pendType === 'oficina' ? '#FFFFFF' : colors.gris} />
+                  <Text style={[styles.pendTypeBtnText, pendType === 'oficina' && styles.pendTypeBtnTextActive]}>Oficina técnica</Text>
+                </TouchableOpacity>
+              </View>
+              {rubros.length > 1 && (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.rubroFilterStrip}
+                  contentContainerStyle={styles.rubroFilterRow}
+                >
+                  <TouchableOpacity
+                    style={[styles.rubroChip, !pendRubroFilter && styles.rubroChipActive]}
+                    onPress={() => setPendRubroFilter(null)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.rubroChipText, !pendRubroFilter && styles.rubroChipTextActive]}>Todos</Text>
+                  </TouchableOpacity>
+                  {rubros.map((r) => (
+                    <TouchableOpacity
+                      key={r.id}
+                      style={[styles.rubroChip, pendRubroFilter === r.id && styles.rubroChipActive]}
+                      onPress={() => setPendRubroFilter(pendRubroFilter === r.id ? null : r.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.rubroChipText, pendRubroFilter === r.id && styles.rubroChipTextActive]} numberOfLines={1}>
+                        {r.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
             </View>
           }
           ListEmptyComponent={
@@ -510,11 +598,38 @@ export default function ProyectoScreen() {
         />
       )}
 
-      {/* ── Modal nombre + tipo de plano ────────────────────── */}
-      <Modal visible={planoSheet} animationType="slide" transparent onRequestClose={() => setPlanoSheet(false)}>
-        <KeyboardAvoidingView style={styles.sheetOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setPlanoSheet(false)} />
-          <View style={styles.sheet}>
+      {/* ── Sheet estado del proyecto ────────────────────── */}
+      <BottomSheet visible={statusSheetVisible} onClose={() => setStatusSheetVisible(false)}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>Estado del proyecto</Text>
+          <View style={styles.statusOptions}>
+            {PROJECT_STATUS_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.statusOption, projectStatus === opt.value && styles.statusOptionActive]}
+                onPress={() => handleStatusChange(opt.value)}
+                activeOpacity={0.8}
+                disabled={savingStatus}
+              >
+                <View style={[styles.statusOptionDot, { backgroundColor: opt.color }]} />
+                <Text style={[styles.statusOptionText, projectStatus === opt.value && styles.statusOptionTextActive]}>
+                  {opt.label}
+                </Text>
+                {projectStatus === opt.value && (
+                  savingStatus
+                    ? <ActivityIndicator size="small" color={colors.crema} />
+                    : <Feather name="check" size={16} color={colors.crema} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </BottomSheet>
+
+      {/* ── Sheet nombre + tipo de plano ────────────────────── */}
+      <BottomSheet visible={planoSheet} onClose={() => setPlanoSheet(false)} avoidKeyboard>
+        <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Nuevo plano</Text>
 
@@ -557,8 +672,7 @@ export default function ProyectoScreen() {
               }
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -686,8 +800,6 @@ const styles = StyleSheet.create({
   planoTypeText: { fontFamily: fonts.mono.regular, fontSize: 8, letterSpacing: 0.4, color: colors.gris },
   planoDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3 },
 
-  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
-  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
     backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingHorizontal: spacing.xl, paddingBottom: 36, paddingTop: 12, gap: spacing.lg,
@@ -736,7 +848,43 @@ const styles = StyleSheet.create({
   tradeText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
   statusChip: { height: 20, borderRadius: 10, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
   statusChipText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3 },
+  pendDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3, marginLeft: 'auto' },
 
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
+
+  // Banner status badge
+  bannerStatusBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12,
+    paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start',
+  },
+  bannerStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  bannerStatusText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: 'rgba(255,255,255,0.85)' },
+
+  // Pendientes filters
+  pendFiltersWrap: { gap: 8, marginBottom: 6 },
+  rubroFilterStrip: { marginHorizontal: -spacing.xl },
+  rubroFilterRow: { flexDirection: 'row', gap: 6, paddingHorizontal: spacing.xl },
+  rubroChip: {
+    height: 30, borderRadius: 15, paddingHorizontal: 12,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+  },
+  rubroChipActive: { backgroundColor: colors.crema },
+  rubroChipText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: colors.gris },
+  rubroChipTextActive: { color: '#FFFFFF' },
+
+  // Status sheet options
+  statusOptions: { gap: 8 },
+  statusOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: colors.chip, borderRadius: 18, padding: 16,
+  },
+  statusOptionActive: {
+    backgroundColor: 'rgba(217,191,164,0.1)',
+    borderWidth: 1.5, borderColor: colors.crema,
+  },
+  statusOptionDot: { width: 10, height: 10, borderRadius: 5 },
+  statusOptionText: { flex: 1, fontFamily: fonts.archivo.bold, fontSize: 14.5, color: colors.gris },
+  statusOptionTextActive: { color: colors.crema },
 });

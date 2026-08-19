@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Modal, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Animated } from 'react-native';
+import { BottomSheet } from '../../components/BottomSheet';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -37,6 +38,17 @@ const STATUS_STYLE: Record<PendingStatus, { bg: string; color: string }> = {
   resuelto: { bg: 'rgba(74,124,89,0.12)', color: colors.success },
 };
 
+function formatItemDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString('es-AR', {
+    day: '2-digit',
+    month: 'short',
+    ...(!sameYear && { year: 'numeric' }),
+  }).replace('.', '').toUpperCase();
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function PendienteCard({ item, onPress, index }: { item: DbPending; onPress: () => void; index: number }) {
@@ -67,7 +79,10 @@ function PendienteCard({ item, onPress, index }: { item: DbPending; onPress: () 
       </View>
       <View style={styles.cardBody}>
         <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
-        <Text style={styles.cardMeta}>{projectName} · {rubroName}</Text>
+        <View style={styles.cardMetaRow}>
+          <Text style={styles.cardMeta} numberOfLines={1}>{projectName} · {rubroName}</Text>
+          <Text style={styles.cardDate}>{formatItemDate(item.created_at)}</Text>
+        </View>
         <View style={styles.cardFooter}>
           {item.trade ? (
             <View style={styles.tradeChip}>
@@ -224,8 +239,7 @@ export default function PendientesScreen() {
         )}
       </ScrollView>
       {/* ── Filter sheet ──────────────────────────────────────── */}
-      <Modal visible={filterVisible} animationType="slide" transparent onRequestClose={() => setFilterVisible(false)}>
-        <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setFilterVisible(false)} />
+      <BottomSheet visible={filterVisible} onClose={() => setFilterVisible(false)}>
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
 
@@ -272,7 +286,7 @@ export default function PendientesScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-      </Modal>
+      </BottomSheet>
     </View>
   );
 }
@@ -330,7 +344,9 @@ const styles = StyleSheet.create({
   },
   cardBody: { flex: 1, gap: 5, justifyContent: 'center' },
   cardDesc: { fontFamily: fonts.archivo.bold, fontSize: 13.5, color: colors.crema, lineHeight: 19 },
-  cardMeta: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3 },
+  cardMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  cardMeta: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3, flex: 1 },
+  cardDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3, flexShrink: 0 },
   cardFooter: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
 
   tradeChip: {
@@ -357,7 +373,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.arena, borderWidth: 1.5, borderColor: colors.tinta,
   },
 
-  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
     backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
     paddingHorizontal: spacing.xl, paddingBottom: 36, paddingTop: 12, gap: spacing.lg,
