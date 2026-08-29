@@ -54,6 +54,20 @@ export default function EditarRubroScreen() {
     setError(null);
 
     const finalCode = code.trim() || `RB-${String(Math.floor(Math.random() * 900) + 100)}`;
+    const prevStatus = (params.status ?? 'sin_iniciar') as RubroStatus;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const dateCapture: { actual_start_date?: string; actual_end_date?: string | null } = {};
+    if (prevStatus !== 'en_curso' && prevStatus !== 'completada' && status === 'en_curso') {
+      dateCapture.actual_start_date = today;
+    }
+    if (prevStatus !== 'completada' && status === 'completada') {
+      dateCapture.actual_end_date = today;
+      if (prevStatus === 'sin_iniciar') dateCapture.actual_start_date = today;
+    }
+    if (prevStatus === 'completada' && status !== 'completada') {
+      dateCapture.actual_end_date = null;
+    }
 
     const { error: dbError } = await supabase
       .from('rubros')
@@ -64,6 +78,7 @@ export default function EditarRubroScreen() {
         status,
         start_date: startDate ? startDate.toISOString().slice(0, 10) : null,
         end_date:   endDate   ? endDate.toISOString().slice(0, 10)   : null,
+        ...dateCapture,
       })
       .eq('id', rubroId);
 

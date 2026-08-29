@@ -42,6 +42,8 @@ interface DbRubro {
   status: DbRubroStatus;
   start_date: string | null;
   end_date: string | null;
+  actual_start_date: string | null;
+  actual_end_date: string | null;
 }
 
 interface DbPendingItem {
@@ -123,23 +125,29 @@ function RubroCard({ rubro, pendientes, onEdit, onGrabacion, onInformeDia }: {
 }) {
   return (
     <TouchableOpacity style={styles.obraCard} onPress={onEdit} activeOpacity={0.85}>
-      <View style={styles.obraCardMain}>
-        <View style={styles.obraInfo}>
-          <Text style={styles.obraName}>{rubro.name}</Text>
-          {rubro.contractor ? (
-            <Text style={styles.obraContractor} numberOfLines={1}>{rubro.contractor}</Text>
-          ) : null}
-          <View style={styles.obraMeta}>
-            <Text style={styles.obraDate}>{formatStartDate(rubro.start_date)}</Text>
-            <StatusPill status={rubro.status} />
-          </View>
-        </View>
+      {/* Header: nombre + status */}
+      <View style={styles.obraHeader}>
+        <Text style={styles.obraName} numberOfLines={2}>{rubro.name}</Text>
+        <StatusPill status={rubro.status} />
+      </View>
+
+      {/* Contratista */}
+      {rubro.contractor ? (
+        <Text style={styles.obraContractor} numberOfLines={1}>{rubro.contractor}</Text>
+      ) : null}
+
+      {/* Footer: fecha + pendientes */}
+      <View style={styles.obraFooter}>
+        <Text style={styles.obraDate}>{formatStartDate(rubro.start_date)}</Text>
         {pendientes > 0 && (
-          <View style={styles.pendBadge}>
-            <Text style={styles.pendText}>{pendientes}</Text>
+          <View style={styles.pendInline}>
+            <Feather name="alert-circle" size={10} color={colors.arena} />
+            <Text style={styles.pendInlineText}>{pendientes} pendiente{pendientes > 1 ? 's' : ''}</Text>
           </View>
         )}
       </View>
+
+      {/* Acciones */}
       <View style={styles.cardActions}>
         <TouchableOpacity style={styles.grabBtn} onPress={onGrabacion} activeOpacity={0.8}>
           <Feather name="video" size={14} color={colors.crema} />
@@ -212,7 +220,7 @@ export default function ProyectoScreen() {
 
       Promise.all([
         supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date, status').eq('id', projectId).single(),
-        supabase.from('rubros').select('id, code, name, contractor, status, start_date, end_date').eq('project_id', projectId).order('created_at'),
+        supabase.from('rubros').select('id, code, name, contractor, status, start_date, end_date, actual_start_date, actual_end_date').eq('project_id', projectId).order('created_at'),
         supabase.from('pending_items').select('id, description, rubro_id, trade, status, reports(type), created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
         supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
       ]).then(([projRes, rubrosRes, pendRes, planosRes]) => {
@@ -400,33 +408,6 @@ export default function ProyectoScreen() {
         </View>
       </View>
 
-      {/* Pill nav */}
-      <View style={styles.pillNavWrap}>
-        <View style={styles.pillNav}>
-          {([
-            { key: 'rubros',     icon: 'layers',  label: 'Rubros'     },
-            { key: 'pendientes', icon: 'clock',   label: 'Pendientes' },
-            { key: 'planos',     icon: 'map',     label: 'Planos'     },
-          ] as { key: Tab; icon: React.ComponentProps<typeof Feather>['name']; label: string }[]).map((t) => {
-            const active = activeTab === t.key;
-            return (
-              <TouchableOpacity
-                key={t.key}
-                style={styles.pillNavItem}
-                onPress={() => setActiveTab(t.key)}
-                activeOpacity={0.7}
-              >
-                <Feather name={t.icon} size={18} color={active ? '#FFFFFF' : 'rgba(255,255,255,0.35)'} />
-                <Text style={[styles.pillNavLabel, active && styles.pillNavLabelActive]}>
-                  {t.key === 'pendientes' && openPendingCount > 0
-                    ? `${t.label} · ${openPendingCount}`
-                    : t.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
 
       {/* Content */}
       {activeTab === 'rubros' && (
@@ -598,6 +579,55 @@ export default function ProyectoScreen() {
         />
       )}
 
+      {/* ── Bottom bar ────────────────────── */}
+      <View style={[styles.bottomBarWrap, { bottom: Math.max(insets.bottom, 16) + 6 }]} pointerEvents="box-none">
+      <View style={styles.bottomBar}>
+        {([
+          { key: 'rubros',     icon: 'layers',      label: 'Rubros'     },
+          { key: 'pendientes', icon: 'clock',        label: 'Pendientes' },
+          { key: 'planos',     icon: 'map',          label: 'Planos'     },
+          { key: 'materiales', icon: 'package',      label: 'Materiales' },
+          { key: 'cronograma', icon: 'bar-chart-2',  label: 'Cronograma' },
+        ] as { key: string; icon: React.ComponentProps<typeof Feather>['name']; label: string }[]).map((t) => {
+          const isNav = t.key === 'materiales' || t.key === 'cronograma';
+          const active = !isNav && activeTab === t.key;
+          const badge = t.key === 'pendientes' && openPendingCount > 0 ? openPendingCount : null;
+          return (
+            <TouchableOpacity
+              key={t.key}
+              style={styles.bottomBarItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (t.key === 'materiales') {
+                  router.push({ pathname: '/materiales/[id]', params: { id: project.id } });
+                } else if (t.key === 'cronograma') {
+                  router.push({ pathname: '/cronograma/[id]', params: { id: project.id } });
+                } else {
+                  setActiveTab(t.key as Tab);
+                }
+              }}
+            >
+              <View style={styles.bottomBarIconWrap}>
+                <Feather
+                  name={t.icon}
+                  size={20}
+                  color={active ? '#FFFFFF' : isNav ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.35)'}
+                />
+                {badge ? (
+                  <View style={styles.badgeDot}>
+                    <Text style={styles.badgeDotText}>{badge}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={[styles.bottomBarLabel, active && styles.bottomBarLabelActive, isNav && styles.bottomBarLabelNav]}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      </View>
+
       {/* ── Sheet estado del proyecto ────────────────────── */}
       <BottomSheet visible={statusSheetVisible} onClose={() => setStatusSheetVisible(false)}>
         <View style={styles.sheet}>
@@ -720,20 +750,31 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 4,
   },
 
-  pillNavWrap: { alignItems: 'center', paddingVertical: spacing.md },
-  pillNav: {
-    flexDirection: 'row', height: 56, borderRadius: 28, backgroundColor: colors.crema,
-    paddingHorizontal: 6, alignItems: 'center',
-    shadowColor: '#12151A', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.22, shadowRadius: 20, elevation: 14,
+  bottomBarWrap: {
+    position: 'absolute', left: 0, right: 0,
+    alignItems: 'center', pointerEvents: 'box-none',
   },
-  pillNavItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22,
+  bottomBar: {
+    flexDirection: 'row', borderRadius: 31, backgroundColor: colors.crema,
+    paddingHorizontal: 8, paddingVertical: 10, alignItems: 'center',
+    shadowColor: '#12151A', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.28, shadowRadius: 26, elevation: 20,
   },
-  pillNavLabel: { fontFamily: fonts.archivo.bold, fontSize: 12.5, color: 'rgba(255,255,255,0.35)' },
-  pillNavLabelActive: { color: '#FFFFFF' },
+  bottomBarItem: { alignItems: 'center', gap: 3, paddingHorizontal: 14, paddingVertical: 4 },
+  bottomBarIconWrap: { position: 'relative' },
+  bottomBarLabel: {
+    fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.2,
+    color: 'rgba(255,255,255,0.35)',
+  },
+  bottomBarLabelActive: { color: '#FFFFFF' },
+  bottomBarLabelNav: { color: 'rgba(255,255,255,0.45)' },
+  badgeDot: {
+    position: 'absolute', top: -4, right: -7,
+    minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: colors.arena, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
+  },
+  badgeDotText: { fontFamily: fonts.archivo.bold, fontSize: 9, color: '#FFFFFF' },
 
-  listContent: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: 120, gap: 10 },
+  listContent: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: 110, gap: 10 },
 
   pendTypeToggle: {
     flexDirection: 'row', backgroundColor: colors.chip, borderRadius: 22, padding: 4, gap: 4, marginBottom: 10,
@@ -746,27 +787,23 @@ const styles = StyleSheet.create({
   pendTypeBtnTextActive: { color: '#FFFFFF' },
 
   obraCard: {
-    borderRadius: 20, backgroundColor: colors.panel, padding: 16, gap: 12,
+    borderRadius: 20, backgroundColor: colors.panel, padding: 16, gap: 8,
     shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
   },
-  obraCardMain: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  obraInfo: { flex: 1, gap: 5 },
-  obraName: { fontFamily: fonts.archivo.bold, fontSize: 15, color: colors.crema },
-  obraContractor: { fontFamily: fonts.archivo.semibold, fontSize: 11.5, color: colors.gris },
-  obraMeta: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  obraDate: { fontFamily: fonts.mono.regular, fontSize: 9.5, letterSpacing: 0.4, color: colors.gris },
+  obraHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  obraName: { fontFamily: fonts.archivo.bold, fontSize: 15.5, color: colors.crema, flex: 1, lineHeight: 21 },
+  obraContractor: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.gris, marginTop: -2 },
+  obraFooter: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 2 },
+  obraDate: { fontFamily: fonts.mono.regular, fontSize: 9.5, letterSpacing: 0.4, color: colors.faint },
+  pendInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pendInlineText: { fontFamily: fonts.archivo.bold, fontSize: 10, color: colors.arena },
   statusPill: {
     height: 24, borderRadius: 12, paddingHorizontal: 10,
-    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   statusPillActive: { backgroundColor: colors.crema },
   pillText: { fontFamily: fonts.archivo.bold, fontSize: 9.5, letterSpacing: 0.3, color: colors.gris },
   pillTextActive: { color: '#FFFFFF' },
-  pendBadge: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: colors.crema, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  pendText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: '#FFFFFF' },
   cardActions: { flexDirection: 'row', gap: 8 },
   grabBtn: {
     flex: 1, height: 38, borderRadius: 19, borderWidth: 1.5, borderColor: colors.border,

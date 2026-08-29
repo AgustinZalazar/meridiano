@@ -146,7 +146,8 @@ export default function ProyectosScreen() {
       !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
     );
 
-  const brandLabel = studio?.name ?? profile?.full_name ?? '';
+  const rawLabel = studio?.name ?? profile?.full_name ?? '';
+  const brandLabel = rawLabel.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>
@@ -176,7 +177,7 @@ export default function ProyectosScreen() {
             <View style={styles.brand}>
               <Image source={LOGO_SRC} style={styles.brandLogo} resizeMode="contain" />
               {brandLabel ? (
-                <Text style={styles.brandName}>{brandLabel}</Text>
+                <Text style={styles.brandName} numberOfLines={2} ellipsizeMode="tail">{brandLabel}</Text>
               ) : null}
             </View>
             <View style={styles.topBarRight}>
@@ -294,6 +295,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.bold,
     fontSize: 14.5,
     color: colors.crema,
+    maxWidth: 180,
+    flexShrink: 1,
   },
   topBarRight: {
     flexDirection: 'row',
