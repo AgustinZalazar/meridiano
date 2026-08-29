@@ -7,6 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { requestPhotoPermission } from '../../lib/pick-image';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
@@ -47,6 +48,7 @@ export default function EditarProyectoScreen() {
   const isRemoteImage = imageUri?.startsWith('http');
 
   async function pickImage() {
+    if (!(await requestPhotoPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
@@ -61,6 +63,7 @@ export default function EditarProyectoScreen() {
   }
 
   async function pickLogo() {
+    if (!(await requestPhotoPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,

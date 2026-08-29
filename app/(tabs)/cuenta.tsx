@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Image, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Image, Alert, TextInput } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { requestPhotoPermission } from '../../lib/pick-image';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useProfile } from '../../lib/use-profile';
 import { useStudio, StudioRole } from '../../lib/use-studio';
+import { BottomSheet } from '../../components/BottomSheet';
 
 const PLAN_META: Record<string, { label: string; users: string; videos: number; price: string }> = {
   starter:    { label: 'Starter',    users: '3 usuarios',   videos: 30,  price: '$49/mes' },
@@ -75,6 +77,9 @@ export default function CuentaScreen() {
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [studioSheetVisible, setStudioSheetVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [savingStudio, setSavingStudio] = useState(false);
 
   const displayName = profile?.full_name ?? '...';
   const planKey = studio?.plan ?? 'starter';
@@ -106,8 +111,15 @@ export default function CuentaScreen() {
     fetchMembers();
   }, [fetchMembers]);
 
+  function openStudioSheet() {
+    if (!studio || !isAdmin) return;
+    setEditName(studio.name);
+    setStudioSheetVisible(true);
+  }
+
   async function handleLogoUpload() {
     if (!studio || !isAdmin) return;
+    if (!(await requestPhotoPermission())) return;
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -140,16 +152,27 @@ export default function CuentaScreen() {
         .from('studio-logos')
         .getPublicUrl(path);
 
-      // Bust cache so the Image component re-fetches even if the path is the same
       await supabase.from('studios').update({ logo_url: `${publicUrl}?v=${Date.now()}` }).eq('id', studio.id);
       await refetchStudio();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[logo upload]', msg);
       Alert.alert('Error', `No se pudo subir el logo.\n${msg}`);
     } finally {
       setLogoUploading(false);
     }
+  }
+
+  async function handleSaveStudio() {
+    if (!studio || !editName.trim()) return;
+    setSavingStudio(true);
+    const updates: Record<string, string> = {};
+    if (editName.trim() !== studio.name) updates.name = editName.trim();
+    if (Object.keys(updates).length > 0) {
+      await supabase.from('studios').update(updates).eq('id', studio.id);
+      await refetchStudio();
+    }
+    setSavingStudio(false);
+    setStudioSheetVisible(false);
   }
 
   async function handleLogout() {
@@ -212,14 +235,12 @@ export default function CuentaScreen() {
           {studio && (
             <TouchableOpacity
               style={styles.logoRow}
-              onPress={handleLogoUpload}
+              onPress={openStudioSheet}
               activeOpacity={isAdmin ? 0.75 : 1}
-              disabled={!isAdmin || logoUploading}
+              disabled={!isAdmin}
             >
               <View style={styles.logoSlot}>
-                {logoUploading ? (
-                  <ActivityIndicator color={colors.gris} size="small" />
-                ) : studio.logo_url ? (
+                {studio.logo_url ? (
                   <Image source={{ uri: studio.logo_url }} style={styles.logoImage} />
                 ) : (
                   <Text style={styles.logoInitials}>
@@ -230,13 +251,11 @@ export default function CuentaScreen() {
               <View style={styles.logoMeta}>
                 <Text style={styles.logoStudioName}>{studio.name}</Text>
                 {isAdmin && (
-                  <Text style={styles.logoHint}>
-                    {studio.logo_url ? 'Cambiar logo' : 'Agregar logo'}
-                  </Text>
+                  <Text style={styles.logoHint}>Editar nombre y logo</Text>
                 )}
               </View>
               {isAdmin && (
-                <Feather name="camera" size={14} color={colors.faint} />
+                <Feather name="edit-2" size={14} color={colors.faint} />
               )}
             </TouchableOpacity>
           )}
@@ -305,6 +324,70 @@ export default function CuentaScreen() {
 
         <Text style={styles.appVersion}>MERIDIANO v1.0.0</Text>
       </ScrollView>
+
+      {/* ── Sheet editar estudio ─────────────────────────── */}
+      <BottomSheet visible={studioSheetVisible} onClose={() => setStudioSheetVisible(false)} avoidKeyboard>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>Editar estudio</Text>
+
+          {/* Logo */}
+          <TouchableOpacity
+            style={styles.sheetLogoWrap}
+            onPress={handleLogoUpload}
+            activeOpacity={0.8}
+            disabled={logoUploading}
+          >
+            <View style={styles.sheetLogoSlot}>
+              {logoUploading ? (
+                <ActivityIndicator color={colors.gris} size="small" />
+              ) : studio?.logo_url ? (
+                <Image source={{ uri: studio.logo_url }} style={styles.logoImage} />
+              ) : (
+                <Text style={styles.logoInitials}>
+                  {(studio?.name ?? '').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <View style={styles.sheetLogoMeta}>
+              <Text style={styles.sheetLogoLabel}>
+                {studio?.logo_url ? 'Cambiar logo' : 'Agregar logo'}
+              </Text>
+              <Text style={styles.sheetLogoHint}>Cuadrado, PNG o JPG</Text>
+            </View>
+            <View style={styles.sheetLogoIcon}>
+              <Feather name="camera" size={15} color={colors.crema} />
+            </View>
+          </TouchableOpacity>
+
+          {/* Nombre */}
+          <View style={styles.sheetFieldWrap}>
+            <Text style={styles.sheetFieldLabel}>NOMBRE DEL ESTUDIO</Text>
+            <TextInput
+              style={styles.sheetInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Ej. Estudio Meridiano"
+              placeholderTextColor={colors.faint}
+              selectionColor={colors.arena}
+              returnKeyType="done"
+              autoCorrect={false}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.sheetBtn, (!editName.trim() || savingStudio) && styles.sheetBtnDisabled]}
+            onPress={handleSaveStudio}
+            activeOpacity={0.85}
+            disabled={!editName.trim() || savingStudio}
+          >
+            {savingStudio
+              ? <ActivityIndicator color="#FFF" size="small" />
+              : <Text style={styles.sheetBtnText}>Guardar</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
     </View>
   );
 }
@@ -455,4 +538,45 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', color: colors.faint, textAlign: 'center',
     marginTop: spacing.xl, marginBottom: spacing.lg,
   },
+
+  sheet: {
+    backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: spacing.xl, paddingBottom: 36, paddingTop: 12, gap: spacing.lg,
+  },
+  sheetHandle: {
+    width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 4,
+  },
+  sheetTitle: { fontFamily: fonts.archivo.bold, fontSize: 18, color: colors.crema, letterSpacing: -0.3 },
+
+  sheetLogoWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 14, borderRadius: 18, backgroundColor: colors.chip,
+  },
+  sheetLogoSlot: {
+    width: 56, height: 56, borderRadius: 16, backgroundColor: colors.panel,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0,
+  },
+  sheetLogoMeta: { flex: 1, gap: 2 },
+  sheetLogoLabel: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema },
+  sheetLogoHint: { fontFamily: fonts.archivo.semibold, fontSize: 11.5, color: colors.gris },
+  sheetLogoIcon: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: colors.panel,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  sheetFieldWrap: { gap: spacing.sm },
+  sheetFieldLabel: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700',
+  },
+  sheetInput: {
+    height: 52, borderRadius: 16, backgroundColor: colors.chip,
+    paddingHorizontal: spacing.md, fontFamily: fonts.archivo.semibold, fontSize: 15, color: colors.crema,
+  },
+  sheetBtn: {
+    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sheetBtnDisabled: { opacity: 0.35 },
+  sheetBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
 });
