@@ -5,7 +5,7 @@ export const colors = {
   panel: '#FFFFFF',
   crema: '#12151A',
   arena: '#D97757',
-  gris: '#8A93A0',
+  gris: '#6B6A65',
   border: '#E8E3DA',
   chip: '#EFEBE2',
   faint: '#C4CBD3',
