@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
@@ -16,7 +17,7 @@ function Logo({ size = 48 }: { size?: number }) {
 }
 
 function Field({
-  label, value, onChangeText, placeholder, secureTextEntry, keyboardType, error, onBlur,
+  label, value, onChangeText, placeholder, secureTextEntry, keyboardType, error, onBlur, showToggle,
 }: {
   label: string;
   value: string;
@@ -26,7 +27,10 @@ function Field({
   keyboardType?: 'email-address' | 'default';
   error?: string | null;
   onBlur?: () => void;
+  showToggle?: boolean;
 }) {
+  const [hidden, setHidden] = useState(!!secureTextEntry);
+
   return (
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, !!error && styles.fieldLabelError]}>{label}</Text>
@@ -37,13 +41,19 @@ function Field({
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor={colors.faint}
-          secureTextEntry={secureTextEntry}
+          secureTextEntry={showToggle ? hidden : secureTextEntry}
           keyboardType={keyboardType}
           autoCapitalize="none"
           autoCorrect={false}
           selectionColor={colors.arena}
+          cursorColor={colors.arena}
           onBlur={onBlur}
         />
+        {showToggle && (
+          <TouchableOpacity onPress={() => setHidden(h => !h)} hitSlop={10} activeOpacity={0.6}>
+            <Feather name={hidden ? 'eye' : 'eye-off'} size={16} color={colors.gris} />
+          </TouchableOpacity>
+        )}
       </View>
       {error ? <Text style={styles.fieldError}>{error}</Text> : null}
     </View>
@@ -163,6 +173,7 @@ export default function LoginScreen() {
                   onChangeText={v => { setPassword(v); setPasswordError(null); setGlobalError(null); }}
                   placeholder="••••••••"
                   secureTextEntry
+                  showToggle
                   error={passwordError}
                 />
               </View>
@@ -213,9 +224,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', color: colors.gris, fontWeight: '700',
   },
   fieldLabelError: { color: colors.error },
-  fieldRow: { borderBottomWidth: 1.5, borderBottomColor: colors.border, paddingBottom: spacing.sm },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1.5, borderBottomColor: colors.border, paddingBottom: spacing.sm },
   fieldRowError: { borderBottomColor: colors.error },
-  fieldInput: { fontFamily: fonts.archivo.semibold, fontSize: 15, color: colors.crema, paddingVertical: 8 },
+  fieldInput: { flex: 1, fontFamily: fonts.archivo.semibold, fontSize: 15, color: colors.crema, paddingVertical: 8 },
   fieldError: {
     fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 0.3,
     color: colors.error, marginTop: 2,
