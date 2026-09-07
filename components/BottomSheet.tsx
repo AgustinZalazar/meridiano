@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   Modal, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform,
@@ -6,6 +6,7 @@ import {
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Props {
   visible: boolean;
@@ -18,17 +19,26 @@ export function BottomSheet({ visible, onClose, children, avoidKeyboard = false 
   const [mounted, setMounted] = useState(visible);
   const translateY = useSharedValue(600);
   const backdropOpacity = useSharedValue(0);
+  const closingRef = useRef(false);
+  const { bottom: bottomInset } = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) {
+      closingRef.current = false;
       setMounted(true);
       backdropOpacity.value = withTiming(1, { duration: 280 });
       translateY.value = withSpring(0, { damping: 22, stiffness: 200, mass: 0.9 });
     } else {
+      closingRef.current = true;
       backdropOpacity.value = withTiming(0, { duration: 220 });
       translateY.value = withSpring(600, { damping: 28, stiffness: 280 }, (finished) => {
         if (finished) runOnJS(setMounted)(false);
       });
+      // Fallback: unmount if spring callback doesn't fire with finished=true
+      const timer = setTimeout(() => {
+        if (closingRef.current) setMounted(false);
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [visible]);
 
@@ -41,12 +51,7 @@ export function BottomSheet({ visible, onClose, children, avoidKeyboard = false 
   }));
 
   return (
-    <Modal
-      visible={mounted}
-      transparent
-      animationType="none"
-      onRequestClose={onClose}
-    >
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={onClose}>
       <Animated.View
         style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}
         pointerEvents="none"
@@ -61,7 +66,8 @@ export function BottomSheet({ visible, onClose, children, avoidKeyboard = false 
           activeOpacity={1}
           onPress={onClose}
         />
-        <Animated.View style={sheetStyle}>
+        {/* bottom: -bottomInset extends past the safe-area boundary to the physical screen edge */}
+        <Animated.View style={[styles.sheetAnchor, { bottom: -bottomInset }, sheetStyle]}>
           {children}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -71,5 +77,6 @@ export function BottomSheet({ visible, onClose, children, avoidKeyboard = false 
 
 const styles = StyleSheet.create({
   backdrop: { backgroundColor: 'rgba(0,0,0,0.5)' },
-  overlay:  { flex: 1, justifyContent: 'flex-end' },
+  overlay: { flex: 1 },
+  sheetAnchor: { position: 'absolute', left: 0, right: 0, bottom: 0 },
 });

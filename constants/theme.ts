@@ -9,7 +9,7 @@ export const colors = {
   border: '#E8E3DA',
   chip: '#EFEBE2',
   faint: '#C4CBD3',
-  error: '#C0392B',
+  error: '#C04535',
   success: '#4A7C59',
 } as const;
 
@@ -36,67 +36,54 @@ export const spacing = {
   xxl: 48,
 } as const;
 
-export const text = {
-  h1: {
+// ─── Escala tipográfica canónica ──────────────────────────────────────────────
+// Usar siempre estos 5 niveles. No introducir tamaños intermedios.
+//
+// display      28px · Archivo 700 · tracking -0.7   → heading de pantalla completa
+// titulo       18px · Archivo 700 · tracking -0.3   → título de tarjeta, modal, sección
+// cuerpo       15px · Archivo 600                   → texto principal en cards
+// apoyo        13px · Archivo 600 · color gris       → fechas, subtítulos, texto secundario
+// etiqueta     10px · Mono 400 · uppercase track 1.2 → labels de formulario, timestamps, códigos
+//
+// Para chips/badge/texto de botón pequeño: 11px Archivo 700 track 0.3 (inline).
+// Para arena/crema override de color: aplicar directamente sobre los tokens de abajo.
+
+export const typeScale = {
+  display: {
     fontFamily: fonts.archivo.bold,
     fontSize: 28,
-    color: colors.crema,
+    letterSpacing: -0.7,
     lineHeight: 34,
+    color: colors.crema,
   } as TextStyle,
-  h2: {
+
+  titulo: {
     fontFamily: fonts.archivo.bold,
-    fontSize: 22,
-    color: colors.crema,
-    lineHeight: 28,
-  } as TextStyle,
-  h3: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 17,
-    color: colors.crema,
+    fontSize: 18,
+    letterSpacing: -0.3,
     lineHeight: 24,
-  } as TextStyle,
-  body: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 15,
     color: colors.crema,
-    lineHeight: 22,
   } as TextStyle,
-  bodyGris: {
+
+  cuerpo: {
     fontFamily: fonts.archivo.semibold,
     fontSize: 15,
-    color: colors.gris,
     lineHeight: 22,
+    color: colors.crema,
   } as TextStyle,
-  small: {
+
+  apoyo: {
     fontFamily: fonts.archivo.semibold,
     fontSize: 13,
-    color: colors.crema,
     lineHeight: 18,
+    color: colors.gris,
   } as TextStyle,
-  label: {
+
+  etiqueta: {
     fontFamily: fonts.mono.regular,
     fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase' as const,
     color: colors.gris,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-  } as TextStyle,
-  labelArena: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 10,
-    color: colors.arena,
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-  } as TextStyle,
-  mono: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 12,
-    color: colors.gris,
-    lineHeight: 18,
-  } as TextStyle,
-  monoSm: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 10,
-    color: colors.gris,
-    lineHeight: 16,
   } as TextStyle,
 };

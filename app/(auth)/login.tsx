@@ -16,7 +16,7 @@ function Logo({ size = 48 }: { size?: number }) {
 }
 
 function Field({
-  label, value, onChangeText, placeholder, secureTextEntry, keyboardType,
+  label, value, onChangeText, placeholder, secureTextEntry, keyboardType, error, onBlur,
 }: {
   label: string;
   value: string;
@@ -24,11 +24,13 @@ function Field({
   placeholder?: string;
   secureTextEntry?: boolean;
   keyboardType?: 'email-address' | 'default';
+  error?: string | null;
+  onBlur?: () => void;
 }) {
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={styles.fieldRow}>
+      <Text style={[styles.fieldLabel, !!error && styles.fieldLabelError]}>{label}</Text>
+      <View style={[styles.fieldRow, !!error && styles.fieldRowError]}>
         <TextInput
           style={styles.fieldInput}
           value={value}
@@ -40,8 +42,10 @@ function Field({
           autoCapitalize="none"
           autoCorrect={false}
           selectionColor={colors.arena}
+          onBlur={onBlur}
         />
       </View>
+      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
     </View>
   );
 }
@@ -50,14 +54,17 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const animLogo   = useRef(new Animated.Value(0)).current;
   const animTitle  = useRef(new Animated.Value(0)).current;
   const animSub    = useRef(new Animated.Value(0)).current;
   const animFields = useRef(new Animated.Value(0)).current;
   const animBtn    = useRef(new Animated.Value(0)).current;
+  const shakeAnim  = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const mk = (v: Animated.Value) => Animated.timing(v, {
@@ -71,29 +78,58 @@ export default function LoginScreen() {
     transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
   });
 
+  function triggerShake() {
+    shakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 10,  duration: 55, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 55, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(shakeAnim, { toValue: 6,   duration: 45, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(shakeAnim, { toValue: -6,  duration: 45, useNativeDriver: true, easing: Easing.linear }),
+      Animated.timing(shakeAnim, { toValue: 0,   duration: 35, useNativeDriver: true, easing: Easing.linear }),
+    ]).start();
+  }
+
+  function validateEmail(val: string): string | null {
+    const trimmed = val.trim();
+    if (!trimmed) return 'Requerido';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return 'Email inválido';
+    return null;
+  }
+
   async function handleLogin() {
-    if (!email || !password) return;
-    setLoading(true);
-    setError(null);
+    const eErr = validateEmail(email);
+    const pErr = !password ? 'Requerido' : password.length < 6 ? 'Mínimo 6 caracteres' : null;
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setEmailError(eErr);
+    setPasswordError(pErr);
+    setGlobalError(null);
 
-    setLoading(false);
-    if (error) {
-      setError('Email o contraseña incorrectos.');
+    if (eErr || pErr) {
+      triggerShake();
+      return;
     }
-    // Si no hay error, onAuthStateChange en _layout redirige automáticamente
+
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    setLoading(false);
+
+    if (error) {
+      setGlobalError('Email o contraseña incorrectos.');
+      triggerShake();
+    }
   }
 
   async function handleForgotPassword() {
-    if (!email) {
-      setError('Ingresá tu email primero.');
+    const eErr = validateEmail(email);
+    if (eErr) {
+      setEmailError(eErr);
+      triggerShake();
       return;
     }
     setLoading(true);
-    await supabase.auth.resetPasswordForEmail(email);
+    await supabase.auth.resetPasswordForEmail(email.trim());
     setLoading(false);
-    setError('Te enviamos un link para restablecer tu contraseña.');
+    setGlobalError('Te enviamos un link para restablecer tu contraseña.');
   }
 
   return (
@@ -116,20 +152,22 @@ export default function LoginScreen() {
                 <Field
                   label="CORREO"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={v => { setEmail(v); setEmailError(null); setGlobalError(null); }}
                   placeholder="nombre@estudio.com"
                   keyboardType="email-address"
+                  error={emailError}
                 />
                 <Field
                   label="CONTRASEÑA"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={v => { setPassword(v); setPasswordError(null); setGlobalError(null); }}
                   placeholder="••••••••"
                   secureTextEntry
+                  error={passwordError}
                 />
               </View>
 
-              {error && <Text style={styles.errorText}>{error}</Text>}
+              {globalError ? <Text style={styles.globalError}>{globalError}</Text> : null}
 
               <TouchableOpacity style={styles.forgotRow} onPress={handleForgotPassword} activeOpacity={0.7}>
                 <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
@@ -138,17 +176,19 @@ export default function LoginScreen() {
           </View>
 
           <Animated.View style={[styles.bottom, fs(animBtn)]}>
-            <TouchableOpacity
-              style={[styles.btnPrimary, (!email || !password || loading) && styles.btnDisabled]}
-              onPress={handleLogin}
-              activeOpacity={0.85}
-              disabled={!email || !password || loading}
-            >
-              {loading
-                ? <ActivityIndicator color="#FFFFFF" />
-                : <Text style={styles.btnPrimaryText}>Entrar al estudio  →</Text>
-              }
-            </TouchableOpacity>
+            <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
+              <TouchableOpacity
+                style={[styles.btnPrimary, (!email || !password || loading) && styles.btnDisabled]}
+                onPress={handleLogin}
+                activeOpacity={0.85}
+                disabled={loading}
+              >
+                {loading
+                  ? <ActivityIndicator color="#FFFFFF" />
+                  : <Text style={styles.btnPrimaryText}>Entrar al estudio  →</Text>
+                }
+              </TouchableOpacity>
+            </Animated.View>
             <TouchableOpacity style={styles.btnLink} onPress={() => router.push('/(auth)/onboarding')} activeOpacity={0.7}>
               <Text style={styles.btnLinkText}>¿Primera vez? Crear estudio</Text>
             </TouchableOpacity>
@@ -167,11 +207,23 @@ const styles = StyleSheet.create({
   heading: { fontFamily: fonts.archivo.bold, fontSize: 34, color: colors.crema, letterSpacing: -1, lineHeight: 40, marginTop: spacing.sm },
   subheading: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.gris, marginTop: spacing.xs },
   fields: { gap: spacing.xl, marginTop: spacing.lg },
-  field: { gap: 8 },
-  fieldLabel: { fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: colors.gris, fontWeight: '700' },
+  field: { gap: 6 },
+  fieldLabel: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700',
+  },
+  fieldLabelError: { color: colors.error },
   fieldRow: { borderBottomWidth: 1.5, borderBottomColor: colors.border, paddingBottom: spacing.sm },
+  fieldRowError: { borderBottomColor: colors.error },
   fieldInput: { fontFamily: fonts.archivo.semibold, fontSize: 15, color: colors.crema, paddingVertical: 8 },
-  errorText: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.error, marginTop: spacing.xs },
+  fieldError: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 0.3,
+    color: colors.error, marginTop: 2,
+  },
+  globalError: {
+    fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.error,
+    marginTop: spacing.xs,
+  },
   forgotRow: { alignItems: 'flex-end', marginTop: spacing.xs },
   forgotText: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.crema, letterSpacing: 0.2 },
   bottom: { padding: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.md },

@@ -4,6 +4,7 @@ import {
   FlatList, Alert,
 } from 'react-native';
 import { BottomSheet } from '../components/BottomSheet';
+import { ProjectPlaceholder } from '../components/ProjectPlaceholder';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -15,18 +16,138 @@ import { supabase } from '../lib/supabase';
 type Mode = 'video' | 'foto';
 type ReportType = 'contratistas' | 'oficina';
 
-// ─── SearchPicker ─────────────────────────────────────────────────────────────
+interface DbProject {
+  id: string;
+  name: string;
+  image_url: string | null;
+  rubros: { status: string }[];
+}
 
-interface SearchPickerProps {
+// ─── ProjectPickerSheet ───────────────────────────────────────────────────────
+
+function ProjectPickerSheet({
+  visible, projects, selectedId, onSelect, onClose, onCreateNew,
+}: {
+  visible: boolean;
+  projects: DbProject[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+  onCreateNew: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const [query, setQuery] = useState('');
+
+  const showSearch = projects.length > 5;
+  const filtered = query.trim()
+    ? projects.filter((p) => p.name.toLowerCase().includes(query.toLowerCase()))
+    : projects;
+
+  function handleClose() {
+    setQuery('');
+    onClose();
+  }
+
+  return (
+    <BottomSheet visible={visible} onClose={handleClose} avoidKeyboard>
+      <View style={[s.sheet, { paddingBottom: insets.bottom + 8 }]}>
+        <View style={s.handle} />
+
+        <View style={s.sheetHeader}>
+          <Text style={s.sheetTitle}>Proyecto</Text>
+          <TouchableOpacity onPress={handleClose} hitSlop={12}>
+            <Feather name="x" size={18} color={colors.gris} />
+          </TouchableOpacity>
+        </View>
+
+        {showSearch && (
+          <View style={s.searchRow}>
+            <Feather name="search" size={15} color={colors.gris} />
+            <TextInput
+              style={s.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Buscar…"
+              placeholderTextColor={colors.faint}
+              autoFocus
+              selectionColor={colors.arena}
+              returnKeyType="search"
+            />
+            {query.length > 0 && (
+              <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
+                <Feather name="x-circle" size={15} color={colors.gris} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        <FlatList
+          data={filtered}
+          keyExtractor={(p) => p.id}
+          keyboardShouldPersistTaps="handled"
+          style={s.sheetList}
+          renderItem={({ item }) => {
+            const selected = item.id === selectedId;
+            const activeCount = item.rubros.filter((r) => r.status === 'en_curso').length;
+            return (
+              <TouchableOpacity
+                style={[s.projectItem, selected && s.projectItemSelected]}
+                onPress={() => { onSelect(item.id); setQuery(''); }}
+                activeOpacity={0.7}
+              >
+                <View style={s.projectThumb}>
+                  {item.image_url
+                    ? <Image source={{ uri: item.image_url }} style={s.projectThumbImg} />
+                    : <ProjectPlaceholder variant="card" />
+                  }
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.projectName, selected && s.projectNameSelected]} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <Text style={s.projectMeta}>
+                    {activeCount > 0
+                      ? `${activeCount} rubro${activeCount > 1 ? 's' : ''} en curso`
+                      : 'Sin rubros activos'
+                    }
+                  </Text>
+                </View>
+                {selected
+                  ? <Feather name="check" size={15} color={colors.arena} />
+                  : <Feather name="chevron-right" size={16} color={colors.faint} />
+                }
+              </TouchableOpacity>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={s.emptyState}>
+              <Text style={s.emptyStateText}>
+                {query ? `Sin resultados para "${query}"` : 'No tenés proyectos todavía'}
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            <TouchableOpacity style={s.createRow} onPress={onCreateNew} activeOpacity={0.7}>
+              <Feather name="plus-circle" size={16} color={colors.arena} />
+              <Text style={s.createRowText}>Crear proyecto nuevo</Text>
+            </TouchableOpacity>
+          }
+        />
+      </View>
+    </BottomSheet>
+  );
+}
+
+// ─── SearchPicker (rubros — lista simple) ─────────────────────────────────────
+
+function SearchPicker({ label, placeholder, value, items, onSelect, disabled }: {
   label: string;
   placeholder: string;
   value: string | null;
   items: string[];
   onSelect: (item: string) => void;
   disabled?: boolean;
-}
-
-function SearchPicker({ label, placeholder, value, items, onSelect, disabled }: SearchPickerProps) {
+}) {
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -57,18 +178,15 @@ function SearchPicker({ label, placeholder, value, items, onSelect, disabled }: 
 
       <BottomSheet visible={open} onClose={() => { setOpen(false); setQuery(''); }}>
         <View style={[s.sheet, { paddingBottom: insets.bottom + 8 }]}>
-            {/* Handle */}
-            <View style={s.handle} />
+          <View style={s.handle} />
+          <View style={s.sheetHeader}>
+            <Text style={s.sheetTitle}>{label}</Text>
+            <TouchableOpacity onPress={() => { setOpen(false); setQuery(''); }} hitSlop={12}>
+              <Feather name="x" size={18} color={colors.gris} />
+            </TouchableOpacity>
+          </View>
 
-            {/* Header */}
-            <View style={s.sheetHeader}>
-              <Text style={s.sheetTitle}>{label}</Text>
-              <TouchableOpacity onPress={() => { setOpen(false); setQuery(''); }} hitSlop={12}>
-                <Feather name="x" size={18} color={colors.gris} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Search */}
+          {items.length > 5 && (
             <View style={s.searchRow}>
               <Feather name="search" size={15} color={colors.gris} />
               <TextInput
@@ -77,7 +195,6 @@ function SearchPicker({ label, placeholder, value, items, onSelect, disabled }: 
                 onChangeText={setQuery}
                 placeholder="Buscar…"
                 placeholderTextColor={colors.faint}
-                autoFocus
                 selectionColor={colors.arena}
                 returnKeyType="search"
               />
@@ -87,35 +204,37 @@ function SearchPicker({ label, placeholder, value, items, onSelect, disabled }: 
                 </TouchableOpacity>
               )}
             </View>
+          )}
 
-            {/* List */}
-            <FlatList
-              data={filtered}
-              keyExtractor={(item) => item}
-              keyboardShouldPersistTaps="handled"
-              style={s.sheetList}
-              renderItem={({ item }) => {
-                const selected = item === value;
-                return (
-                  <TouchableOpacity
-                    style={[s.sheetItem, selected && s.sheetItemSelected]}
-                    onPress={() => handleSelect(item)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[s.sheetItemText, selected && s.sheetItemTextSelected]}>
-                      {item}
-                    </Text>
-                    {selected && <Feather name="check" size={15} color={colors.arena} />}
-                  </TouchableOpacity>
-                );
-              }}
-              ListEmptyComponent={
-                <View style={s.emptySearch}>
-                  <Text style={s.emptySearchText}>Sin resultados para "{query}"</Text>
-                </View>
-              }
-            />
-          </View>
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => item}
+            keyboardShouldPersistTaps="handled"
+            style={s.sheetList}
+            renderItem={({ item }) => {
+              const selected = item === value;
+              return (
+                <TouchableOpacity
+                  style={[s.sheetItem, selected && s.sheetItemSelected]}
+                  onPress={() => handleSelect(item)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.sheetItemText, selected && s.sheetItemTextSelected]}>
+                    {item}
+                  </Text>
+                  {selected && <Feather name="check" size={15} color={colors.arena} />}
+                </TouchableOpacity>
+              );
+            }}
+            ListEmptyComponent={
+              <View style={s.emptyState}>
+                <Text style={s.emptyStateText}>
+                  {query ? `Sin resultados para "${query}"` : 'Sin rubros en este proyecto'}
+                </Text>
+              </View>
+            }
+          />
+        </View>
       </BottomSheet>
     </View>
   );
@@ -139,27 +258,33 @@ function LockedField({ label, value }: { label: string; value: string }) {
 
 export default function NuevaGrabacionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ projectId?: string; projectName?: string; rubroName?: string; rubroId?: string }>();
+  const params = useLocalSearchParams<{
+    projectId?: string; projectName?: string; rubroName?: string; rubroId?: string;
+  }>();
 
-  const lockedProjectId = params.projectId ?? null;
+  const lockedProjectId   = params.projectId   ?? null;
   const lockedProjectName = params.projectName ?? null;
-  const lockedRubroName = params.rubroName ?? null;
-  const lockedRubroId = params.rubroId ?? null;
+  const lockedRubroName   = params.rubroName   ?? null;
+  const lockedRubroId     = params.rubroId     ?? null;
 
-  const [mode, setMode] = useState<Mode>('video');
+  const [mode, setMode]             = useState<Mode>('video');
   const [reportType, setReportType] = useState<ReportType>('contratistas');
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(lockedProjectId ?? null);
-  const [selectedRubro, setSelectedRubro] = useState<string | null>(lockedRubroName ?? null);
-  const [selectedRubroId, setSelectedRubroId] = useState<string | null>(lockedRubroId ?? null);
-  const [note, setNote] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(lockedProjectId);
+  const [selectedRubro, setSelectedRubro]         = useState<string | null>(lockedRubroName);
+  const [selectedRubroId, setSelectedRubroId]     = useState<string | null>(lockedRubroId);
+  const [note, setNote]     = useState('');
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
 
-  const [dbProjects, setDbProjects] = useState<{ id: string; name: string }[]>([]);
-  const [dbRubros, setDbRubros] = useState<{ id: string; name: string }[]>([]);
+  const [dbProjects, setDbProjects] = useState<DbProject[]>([]);
+  const [dbRubros, setDbRubros]     = useState<{ id: string; name: string }[]>([]);
+  const [projectSheetOpen, setProjectSheetOpen] = useState(false);
 
   useEffect(() => {
-    supabase.from('projects').select('id, name').then(({ data }) => setDbProjects(data ?? []));
+    supabase
+      .from('projects')
+      .select('id, name, image_url, rubros(status)')
+      .then(({ data }) => setDbProjects((data ?? []) as DbProject[]));
   }, []);
 
   useEffect(() => {
@@ -169,16 +294,16 @@ export default function NuevaGrabacionScreen() {
   }, [selectedProjectId]);
 
   const selectedProjectName = dbProjects.find((p) => p.id === selectedProjectId)?.name ?? null;
-  const projectNames = dbProjects.map((p) => p.name);
   const rubroNames = dbRubros.map((r) => r.name);
 
   const canContinue = selectedProjectId && selectedRubro && (
     mode === 'video' ? videoUri !== null : photoUri !== null
   );
 
-  function handleSelectProject(name: string) {
-    const p = dbProjects.find((p) => p.name === name);
-    if (p) { setSelectedProjectId(p.id); setSelectedRubro(null); setSelectedRubroId(null); }
+  function handleSelectProject(id: string) {
+    setSelectedProjectId(id);
+    setSelectedRubro(null);
+    setSelectedRubroId(null);
   }
 
   function handleSelectRubro(name: string) {
@@ -187,8 +312,8 @@ export default function NuevaGrabacionScreen() {
   }
 
   async function handleRecordVideo() {
-    const camPerm = await ImagePicker.requestCameraPermissionsAsync();
-    if (camPerm.status !== 'granted') {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
       Alert.alert('Permiso requerido', 'Necesitamos acceso a la cámara y el micrófono para grabar videos.');
       return;
     }
@@ -197,9 +322,7 @@ export default function NuevaGrabacionScreen() {
       videoMaxDuration: 600,
       allowsEditing: false,
     });
-    if (!result.canceled && result.assets[0]) {
-      setVideoUri(result.assets[0].uri);
-    }
+    if (!result.canceled && result.assets[0]) setVideoUri(result.assets[0].uri);
   }
 
   async function handleTakePhoto() {
@@ -242,7 +365,13 @@ export default function NuevaGrabacionScreen() {
     if (mode === 'foto' && photoUri) {
       router.push({
         pathname: '/editar-foto',
-        params: { uri: photoUri, project: selectedProjectId ?? '', rubro: selectedRubro ?? '', rubroId: selectedRubroId ?? '', type: reportType },
+        params: {
+          uri: photoUri,
+          project: selectedProjectId ?? '',
+          rubro: selectedRubro ?? '',
+          rubroId: selectedRubroId ?? '',
+          type: reportType,
+        },
       });
     } else if (videoUri) {
       router.replace({
@@ -261,7 +390,11 @@ export default function NuevaGrabacionScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={s.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Top row */}
         <View style={s.topRow}>
           <TouchableOpacity style={s.circleBtn} onPress={() => router.back()} activeOpacity={0.8}>
@@ -330,20 +463,34 @@ export default function NuevaGrabacionScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Project */}
+        {/* Project picker */}
         {lockedProjectId && lockedProjectName ? (
           <LockedField label="PROYECTO" value={lockedProjectName} />
         ) : (
-          <SearchPicker
-            label="PROYECTO"
-            placeholder="Seleccionar proyecto…"
-            value={selectedProjectName}
-            items={projectNames}
-            onSelect={handleSelectProject}
-          />
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>PROYECTO</Text>
+            <TouchableOpacity
+              style={s.pickerField}
+              onPress={() => setProjectSheetOpen(true)}
+              activeOpacity={0.75}
+            >
+              <Text style={selectedProjectName ? s.pickerValue : s.pickerPlaceholder} numberOfLines={1}>
+                {selectedProjectName ?? 'Seleccionar proyecto…'}
+              </Text>
+              <Feather name="chevron-down" size={16} color={colors.gris} />
+            </TouchableOpacity>
+            <ProjectPickerSheet
+              visible={projectSheetOpen}
+              projects={dbProjects}
+              selectedId={selectedProjectId}
+              onSelect={(id) => { handleSelectProject(id); setProjectSheetOpen(false); }}
+              onClose={() => setProjectSheetOpen(false)}
+              onCreateNew={() => { setProjectSheetOpen(false); router.push('/(tabs)'); }}
+            />
+          </View>
         )}
 
-        {/* Obra */}
+        {/* Rubro picker */}
         {lockedRubroName ? (
           <LockedField label="RUBRO" value={lockedRubroName} />
         ) : (
@@ -456,9 +603,7 @@ const s = StyleSheet.create({
     width: 64, height: 64, borderRadius: 32,
     backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center',
   },
-  captureCircleDone: {
-    backgroundColor: 'rgba(74,180,120,0.35)',
-  },
+  captureCircleDone: { backgroundColor: 'rgba(74,180,120,0.35)' },
   captureTitle: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF' },
   captureHint: {
     fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 0.6,
@@ -475,9 +620,7 @@ const s = StyleSheet.create({
   },
   photoRetakeText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: '#FFFFFF' },
 
-  pickRow: {
-    flexDirection: 'row', marginHorizontal: spacing.xl, gap: spacing.sm,
-  },
+  pickRow: { flexDirection: 'row', marginHorizontal: spacing.xl, gap: spacing.sm },
   pickBtn: {
     height: 52, borderRadius: 26,
     borderWidth: 1.5, borderColor: colors.border, backgroundColor: colors.panel,
@@ -491,7 +634,6 @@ const s = StyleSheet.create({
     textTransform: 'uppercase', color: colors.gris, fontWeight: '700',
   },
 
-  // Compact trigger field
   pickerField: {
     height: 52, borderRadius: 16, backgroundColor: colors.panel,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -502,7 +644,6 @@ const s = StyleSheet.create({
   pickerValue: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.crema, flex: 1 },
   pickerPlaceholder: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint, flex: 1 },
 
-  // Locked field (pre-filled from navigation)
   lockedField: {
     height: 52, borderRadius: 16, backgroundColor: colors.panel,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -510,10 +651,11 @@ const s = StyleSheet.create({
     borderLeftWidth: 3, borderLeftColor: colors.arena,
   },
 
+  // Bottom sheet
   sheet: {
     backgroundColor: colors.panel,
     borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    paddingTop: 12, maxHeight: '82%',
+    paddingTop: 12,
   },
   handle: {
     width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,
@@ -536,7 +678,22 @@ const s = StyleSheet.create({
     color: colors.crema, paddingVertical: 0,
   },
 
-  sheetList: { flexGrow: 0 },
+  sheetList: { flexGrow: 0, maxHeight: 360 },
+
+  // Project picker rows (rich cards)
+  projectItem: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.xl, paddingVertical: 12,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  projectItemSelected: { backgroundColor: 'rgba(217,119,87,0.06)' },
+  projectThumb: { width: 44, height: 44, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.chip },
+  projectThumbImg: { width: '100%', height: '100%' },
+  projectName: { fontFamily: fonts.archivo.semibold, fontSize: 14.5, color: colors.crema },
+  projectNameSelected: { fontFamily: fonts.archivo.bold, color: colors.arena },
+  projectMeta: { fontFamily: fonts.archivo.semibold, fontSize: 11.5, color: colors.gris, marginTop: 2 },
+
+  // Simple text picker rows (rubros)
   sheetItem: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.xl, paddingVertical: 15,
@@ -546,10 +703,16 @@ const s = StyleSheet.create({
   sheetItemText: { fontFamily: fonts.archivo.semibold, fontSize: 14.5, color: colors.crema },
   sheetItemTextSelected: { fontFamily: fonts.archivo.bold, color: colors.arena },
 
-  emptySearch: { paddingVertical: 32, alignItems: 'center' },
-  emptySearchText: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.gris },
+  // Empty state + create row
+  emptyState: { paddingVertical: 32, alignItems: 'center' },
+  emptyStateText: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.gris },
+  createRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.xl, paddingVertical: 16,
+  },
+  createRowText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.arena },
 
-  // Report type (kept as inline toggle — only 2 opciones, escala bien)
+  // Report type
   optionsList: {
     borderRadius: 20, backgroundColor: colors.panel, overflow: 'hidden',
     shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
