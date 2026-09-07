@@ -283,7 +283,6 @@ export default function DetallePendienteScreen() {
               options={STATUS_OPTIONS.map(o => o.label)}
               selected={STATUS_OPTIONS.find(o => o.value === status)?.label ?? STATUS_OPTIONS[0].label}
               onChange={(label) => setStatus(STATUS_OPTIONS.find(o => o.label === label)!.value)}
-              style={{ alignSelf: 'stretch' }}
             />
           </View>
 

@@ -158,7 +158,6 @@ export default function NuevoRubroScreen() {
             options={STATUS_OPTIONS.map(o => o.label)}
             selected={STATUS_OPTIONS.find(o => o.key === status)?.label ?? STATUS_OPTIONS[0].label}
             onChange={(label) => setStatus(STATUS_OPTIONS.find(o => o.label === label)!.key)}
-            style={{ alignSelf: 'stretch' }}
           />
         </View>
 

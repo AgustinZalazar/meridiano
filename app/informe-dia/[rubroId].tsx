@@ -362,7 +362,7 @@ const s = StyleSheet.create({
     fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
     textTransform: 'uppercase', color: colors.gris, fontWeight: '700', marginTop: 8,
   },
-  typeToggle: { alignSelf: 'stretch' },
+  typeToggle: {},
 
   startBtn: {
     height: 54, borderRadius: 27, backgroundColor: colors.crema, width: '100%',

@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   },
 
   typeToggle: {
-    alignSelf: 'stretch', marginHorizontal: spacing.xl, marginBottom: spacing.md,
+    marginHorizontal: spacing.xl, marginBottom: spacing.md,
   },
 
   list: { flex: 1 },
