@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, Easing } from 'react-native';
 import { BottomSheet } from '../../components/BottomSheet';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -51,6 +51,28 @@ function formatItemDate(iso: string): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+function SkeletonPendienteCard() {
+  const shimmer = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(shimmer, { toValue: 1, duration: 1100, useNativeDriver: true })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+  const opacity = shimmer.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.45, 1] });
+  return (
+    <Animated.View style={[styles.card, { opacity }]}>
+      <View style={[styles.imageSlot, { backgroundColor: colors.chip }]} />
+      <View style={[styles.cardBody, { gap: 10 }]}>
+        <View style={{ height: 13, borderRadius: 7, backgroundColor: colors.chip, width: '70%' }} />
+        <View style={{ height: 11, borderRadius: 6, backgroundColor: colors.chip, width: '50%' }} />
+        <View style={{ height: 20, borderRadius: 10, backgroundColor: colors.chip, width: '35%' }} />
+      </View>
+    </Animated.View>
+  );
+}
+
 function PendienteCard({ item, onPress, index }: { item: DbPending; onPress: () => void; index: number }) {
   const s = STATUS_STYLE[item.status];
   const projectName = item.projects?.name ?? '—';
@@ -59,15 +81,18 @@ function PendienteCard({ item, onPress, index }: { item: DbPending; onPress: () 
 
   useEffect(() => {
     Animated.sequence([
-      Animated.delay(index * 55),
-      Animated.spring(anim, { toValue: 1, tension: 80, friction: 9, useNativeDriver: true }),
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
   }, []);
 
   return (
     <Animated.View style={{
-      opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
-      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
     }}>
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.imageSlot}>
@@ -164,7 +189,6 @@ export default function PendientesScreen() {
       {/* Header */}
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.eyebrow}>PENDIENTES</Text>
           <Text style={styles.heading}>{pendienteCount} sin resolver</Text>
         </View>
         <TouchableOpacity style={styles.circleBtn} onPress={() => setFilterVisible(true)} activeOpacity={0.8}>
@@ -219,9 +243,7 @@ export default function PendientesScreen() {
         showsVerticalScrollIndicator={false}
       >
         {loading ? (
-          <View style={styles.emptyState}>
-            <ActivityIndicator color={colors.crema} />
-          </View>
+          <>{[0,1,2,3].map(i => <SkeletonPendienteCard key={i} />)}</>
         ) : filtered.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="check-circle" size={32} color={colors.faint} />
@@ -396,7 +418,7 @@ const styles = StyleSheet.create({
   filterChipText: { fontFamily: fonts.archivo.bold, fontSize: 12.5, color: colors.crema },
   filterChipTextActive: { color: '#FFFFFF' },
   sheetApplyBtn: {
-    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    height: 54, borderRadius: 27, backgroundColor: colors.crema,
     alignItems: 'center', justifyContent: 'center', marginTop: spacing.xs,
   },
   sheetApplyText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },

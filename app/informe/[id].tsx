@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
-  ActivityIndicator, Alert, Modal, TextInput,
+  ActivityIndicator, Alert, Modal, TextInput, Animated, Easing,
 } from 'react-native';
 import { BottomSheet } from '../../components/BottomSheet';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -92,8 +92,23 @@ function ItemCard({ item }: { item: PendingItem }) {
   );
 }
 
-function TradeGroup({ trade, items }: { trade: string; items: PendingItem[] }) {
+function TradeGroup({ trade, items, index }: { trade: string; items: PendingItem[]; index: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   return (
+    <Animated.View style={{
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
+    }}>
     <View style={styles.sectorBlock}>
       <View style={styles.sectorHeader}>
         <Text style={styles.sectorName}>{trade}</Text>
@@ -103,6 +118,7 @@ function TradeGroup({ trade, items }: { trade: string; items: PendingItem[] }) {
         <ItemCard key={item.id} item={item} />
       ))}
     </View>
+    </Animated.View>
   );
 }
 
@@ -464,8 +480,8 @@ export default function InformeScreen() {
             </Text>
           </View>
         ) : (
-          groups.map((g) => (
-            <TradeGroup key={g.trade} trade={g.trade} items={g.items} />
+          groups.map((g, i) => (
+            <TradeGroup key={g.trade} trade={g.trade} items={g.items} index={i} />
           ))
         )}
 
@@ -995,7 +1011,7 @@ const styles = StyleSheet.create({
     minHeight: 100, textAlignVertical: 'top',
   },
   sheetBtn: {
-    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    height: 54, borderRadius: 27, backgroundColor: colors.crema,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
   },
   sheetBtnDisabled: { opacity: 0.35 },

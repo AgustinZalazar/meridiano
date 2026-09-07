@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, TextInput, ActivityIndicator, Alert, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -58,6 +58,30 @@ export default function DetallePendienteScreen() {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [displayedSummary, setDisplayedSummary] = useState('');
+  const shimmerX = useRef(new Animated.Value(-80)).current;
+
+  useEffect(() => {
+    const summary = item?.reports?.ai_summary;
+    if (!summary || item?.source !== 'ai') { setDisplayedSummary(''); return; }
+    setDisplayedSummary('');
+    let i = 0;
+    const timer = setInterval(() => {
+      i++;
+      setDisplayedSummary(summary.slice(0, i));
+      if (i >= summary.length) clearInterval(timer);
+    }, 16);
+    return () => clearInterval(timer);
+  }, [item?.reports?.ai_summary, item?.source]);
+
+  useEffect(() => {
+    if (item?.source !== 'ai') return;
+    shimmerX.setValue(-80);
+    const t = setTimeout(() => {
+      Animated.timing(shimmerX, { toValue: 120, duration: 900, useNativeDriver: true }).start();
+    }, 200);
+    return () => clearTimeout(t);
+  }, [item?.source]);
 
   const fetchItem = useCallback(async () => {
     if (!id) return;
@@ -182,11 +206,21 @@ export default function DetallePendienteScreen() {
                 <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
               </View>
             ) : null}
-            <View style={[styles.sourceChip, isAI && styles.sourceChipAI]}>
+            <View style={[styles.sourceChip, isAI && styles.sourceChipAI, isAI && { overflow: 'hidden' }]}>
               <Feather name={isAI ? 'cpu' : 'edit-3'} size={10} color={isAI ? colors.arena : colors.gris} />
               <Text style={[styles.sourceChipText, isAI && styles.sourceChipTextAI]}>
                 {isAI ? 'Generado por IA' : 'Manual'}
               </Text>
+              {isAI && (
+                <Animated.View
+                  style={{
+                    position: 'absolute', top: 0, bottom: 0, width: 30,
+                    backgroundColor: 'rgba(255,255,255,0.28)',
+                    transform: [{ translateX: shimmerX }],
+                  }}
+                  pointerEvents="none"
+                />
+              )}
             </View>
           </View>
 
@@ -198,7 +232,7 @@ export default function DetallePendienteScreen() {
                 <Text style={[styles.sectionLabel, { color: colors.arena }]}>ANÁLISIS DE IA</Text>
               </View>
               <View style={styles.aiCard}>
-                <Text style={styles.aiText}>{item.reports.ai_summary}</Text>
+                <Text style={styles.aiText}>{displayedSummary}</Text>
               </View>
             </View>
           ) : null}

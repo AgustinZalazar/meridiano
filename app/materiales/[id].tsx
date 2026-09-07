@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, SectionList } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, SectionList, Animated, Easing } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -46,11 +46,26 @@ function deviation(estimated: number | null, actual: number | null): number | nu
   return Math.round(((actual - estimated) / estimated) * 100);
 }
 
-function MaterialCard({ item, onPress }: { item: DbMaterial; onPress: () => void }) {
+function MaterialCard({ item, onPress, index }: { item: DbMaterial; onPress: () => void; index: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   const dev = deviation(item.estimated_quantity, item.actual_quantity);
   const hasActual = item.actual_quantity != null || item.actual_date != null;
 
   return (
+    <Animated.View style={{
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
+    }}>
     <TouchableOpacity style={s.card} onPress={onPress} activeOpacity={0.85}>
       <View style={s.cardHeader}>
         <View style={s.cardLeft}>
@@ -98,6 +113,7 @@ function MaterialCard({ item, onPress }: { item: DbMaterial; onPress: () => void
         )}
       </View>
     </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -175,7 +191,6 @@ export default function MaterialesScreen() {
           <Feather name="arrow-left" size={16} color={colors.crema} />
         </TouchableOpacity>
         <View style={s.topCenter}>
-          <Text style={s.topEyebrow}>MATERIALES</Text>
           {projectName ? <Text style={s.topTitle} numberOfLines={1}>{projectName}</Text> : null}
         </View>
         <TouchableOpacity
@@ -203,8 +218,8 @@ export default function MaterialesScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <MaterialCard item={item} onPress={() => navToMaterial(item)} />
+          renderItem={({ item, index }) => (
+            <MaterialCard item={item} index={index} onPress={() => navToMaterial(item)} />
           )}
           renderSectionHeader={({ section }) => (
             <View style={s.sectionHeader}>

@@ -76,7 +76,7 @@ const s = StyleSheet.create({
     height: 46,
     paddingHorizontal: spacing.xl,
     borderRadius: 23,
-    backgroundColor: colors.arena,
+    backgroundColor: colors.crema,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -253,7 +253,7 @@ const s = StyleSheet.create({
 
   ctaBlock: { paddingHorizontal: spacing.xl, marginTop: spacing.sm },
   saveBtn: {
-    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    height: 54, borderRadius: 27, backgroundColor: colors.crema,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
   },
   saveBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFF' },

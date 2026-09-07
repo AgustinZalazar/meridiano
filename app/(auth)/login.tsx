@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Image,
+  Animated, Easing,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,6 +53,24 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const animLogo   = useRef(new Animated.Value(0)).current;
+  const animTitle  = useRef(new Animated.Value(0)).current;
+  const animSub    = useRef(new Animated.Value(0)).current;
+  const animFields = useRef(new Animated.Value(0)).current;
+  const animBtn    = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const mk = (v: Animated.Value) => Animated.timing(v, {
+      toValue: 1, duration: 400, easing: Easing.out(Easing.ease), useNativeDriver: true,
+    });
+    Animated.stagger(70, [animLogo, animTitle, animSub, animFields, animBtn].map(mk)).start();
+  }, []);
+
+  const fs = (anim: Animated.Value) => ({
+    opacity: anim,
+    transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+  });
+
   async function handleLogin() {
     if (!email || !password) return;
     setLoading(true);
@@ -82,35 +101,43 @@ export default function LoginScreen() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView style={styles.flex} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <View style={styles.top}>
-            <Logo />
-            <Text style={styles.heading}>Bienvenida{'\n'}de nuevo</Text>
-            <Text style={styles.subheading}>Ingresá para ver tus proyectos y rubros</Text>
+            <Animated.View style={fs(animLogo)}>
+              <Logo />
+            </Animated.View>
+            <Animated.View style={fs(animTitle)}>
+              <Text style={styles.heading}>Bienvenida{'\n'}de nuevo</Text>
+            </Animated.View>
+            <Animated.View style={fs(animSub)}>
+              <Text style={styles.subheading}>Ingresá para ver tus proyectos y rubros</Text>
+            </Animated.View>
 
-            <View style={styles.fields}>
-              <Field
-                label="CORREO"
-                value={email}
-                onChangeText={setEmail}
-                placeholder="nombre@estudio.com"
-                keyboardType="email-address"
-              />
-              <Field
-                label="CONTRASEÑA"
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                secureTextEntry
-              />
-            </View>
+            <Animated.View style={[fs(animFields), { gap: spacing.md }]}>
+              <View style={styles.fields}>
+                <Field
+                  label="CORREO"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="nombre@estudio.com"
+                  keyboardType="email-address"
+                />
+                <Field
+                  label="CONTRASEÑA"
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  secureTextEntry
+                />
+              </View>
 
-            {error && <Text style={styles.errorText}>{error}</Text>}
+              {error && <Text style={styles.errorText}>{error}</Text>}
 
-            <TouchableOpacity style={styles.forgotRow} onPress={handleForgotPassword} activeOpacity={0.7}>
-              <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.forgotRow} onPress={handleForgotPassword} activeOpacity={0.7}>
+                <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
+              </TouchableOpacity>
+            </Animated.View>
           </View>
 
-          <View style={styles.bottom}>
+          <Animated.View style={[styles.bottom, fs(animBtn)]}>
             <TouchableOpacity
               style={[styles.btnPrimary, (!email || !password || loading) && styles.btnDisabled]}
               onPress={handleLogin}
@@ -125,7 +152,7 @@ export default function LoginScreen() {
             <TouchableOpacity style={styles.btnLink} onPress={() => router.push('/(auth)/onboarding')} activeOpacity={0.7}>
               <Text style={styles.btnLinkText}>¿Primera vez? Crear estudio</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

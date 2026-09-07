@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator, TextInput, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator, TextInput, Animated, Easing } from 'react-native';
+import { SlidingTabs } from '../../components/SlidingTabs';
 
 const LOGO_SRC = require('../../assets/icon.png');
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -67,19 +68,43 @@ function SearchBarFade({ children }: { children: any }) {
   );
 }
 
+function SkeletonCard() {
+  const shimmer = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(shimmer, { toValue: 1, duration: 1100, useNativeDriver: true })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+  const opacity = shimmer.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.45, 1] });
+  return (
+    <Animated.View style={[styles.card, { opacity }]}>
+      <View style={[styles.cardImageSlot, { backgroundColor: colors.chip }]} />
+      <View style={[styles.cardBody, { gap: 10 }]}>
+        <View style={{ height: 14, borderRadius: 7, backgroundColor: colors.chip, width: '65%' }} />
+        <View style={{ height: 22, borderRadius: 11, backgroundColor: colors.chip, width: '40%' }} />
+      </View>
+    </Animated.View>
+  );
+}
+
 function ProjectCard({ project, onPress, index }: { project: DbProject; onPress: () => void; index: number }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.sequence([
-      Animated.delay(index * 60),
-      Animated.spring(anim, { toValue: 1, tension: 80, friction: 9, useNativeDriver: true }),
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
   }, []);
 
   return (
     <Animated.View style={{
-      opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
-      transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
     }}>
       <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
         <View style={styles.cardImageSlot}>
@@ -111,6 +136,19 @@ export default function ProyectosScreen() {
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<TextInput>(null);
+  const fabPulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(fabPulse, { toValue: 1.06, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(fabPulse, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(600),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
 
   function openSearch() {
     setSearchVisible(true);
@@ -202,23 +240,9 @@ export default function ProyectosScreen() {
         <Text style={styles.heading}>Tus proyectos{'\n'}de construcción</Text>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterStrip}
-        contentContainerStyle={styles.filtersRow}
-      >
-        {FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.chip, filter === f && styles.chipActive]}
-            onPress={() => setFilter(f)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.chipText, filter === f && styles.chipTextActive]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.filterRow}>
+        <SlidingTabs options={FILTERS} selected={filter} onChange={setFilter} />
+      </View>
 
       <ScrollView
         style={styles.list}
@@ -226,7 +250,7 @@ export default function ProyectosScreen() {
         showsVerticalScrollIndicator={false}
       >
         {loading ? (
-          <ActivityIndicator color={colors.crema} style={styles.loader} />
+          <>{[0,1,2,3].map(i => <SkeletonCard key={i} />)}</>
         ) : filtered.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name={searchQuery.trim() ? 'search' : 'layers'} size={28} color={colors.faint} />
@@ -258,13 +282,15 @@ export default function ProyectosScreen() {
         )}
       </ScrollView>
 
-      <TouchableOpacity
-        style={[styles.fab, { bottom: insets.bottom + 92 }]}
-        onPress={() => router.push('/nueva-grabacion')}
-        activeOpacity={0.85}
-      >
-        <Feather name="video" size={16} color="#FFFFFF" />
-      </TouchableOpacity>
+      <Animated.View style={[styles.fabWrap, { bottom: insets.bottom + 92, transform: [{ scale: fabPulse }] }]}>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() => router.push('/nueva-grabacion')}
+          activeOpacity={0.85}
+        >
+          <Feather name="video" size={16} color="#FFFFFF" />
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -332,34 +358,10 @@ const styles = StyleSheet.create({
     letterSpacing: -0.9,
     lineHeight: 36,
   },
-  filtersRow: {
+  filterRow: {
     paddingHorizontal: spacing.xl,
-    gap: spacing.sm,
     paddingBottom: spacing.md,
     paddingTop: spacing.xs,
-  },
-  chip: {
-    height: 34,
-    borderRadius: 17,
-    paddingHorizontal: 16,
-    backgroundColor: colors.chip,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipActive: {
-    backgroundColor: colors.crema,
-  },
-  chipText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 12.5,
-    color: colors.crema,
-  },
-  chipTextActive: {
-    color: '#FFFFFF',
-  },
-  filterStrip: {
-    flexGrow: 0,
-    flexShrink: 0,
   },
   list: {
     flex: 1,
@@ -368,9 +370,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md + 4,
     paddingTop: spacing.sm,
     gap: 12,
-  },
-  loader: {
-    marginTop: 60,
   },
   emptyState: {
     alignItems: 'center',
@@ -495,9 +494,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.crema,
   },
-  fab: {
+  fabWrap: {
     position: 'absolute',
     right: spacing.xl,
+  },
+  fab: {
     width: 52,
     height: 52,
     borderRadius: 26,

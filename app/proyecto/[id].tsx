@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, ListRenderItem, Alert, ScrollView, TextInput } from 'react-native';
+import { useCallback, useState, useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, Alert, ScrollView, TextInput, Animated, Easing } from 'react-native';
+import { SlidingTabs } from '../../components/SlidingTabs';
 import { BottomSheet } from '../../components/BottomSheet';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ProjectPlaceholder } from '../../components/ProjectPlaceholder';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -107,6 +109,31 @@ const PENDING_STATUS_LABEL: Record<PendingStatus, string> = {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+function SkeletonRubroCard() {
+  const shimmer = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(shimmer, { toValue: 1, duration: 1100, useNativeDriver: true })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+  const opacity = shimmer.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.45, 1] });
+  return (
+    <Animated.View style={[styles.obraCard, { opacity, gap: 12 }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{ height: 15, width: '55%', borderRadius: 8, backgroundColor: colors.chip }} />
+        <View style={{ height: 24, width: 72, borderRadius: 12, backgroundColor: colors.chip }} />
+      </View>
+      <View style={{ height: 11, width: '38%', borderRadius: 6, backgroundColor: colors.chip }} />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1, height: 38, borderRadius: 19, backgroundColor: colors.chip }} />
+        <View style={{ flex: 1, height: 38, borderRadius: 19, backgroundColor: colors.chip }} />
+      </View>
+    </Animated.View>
+  );
+}
+
 function StatusPill({ status }: { status: DbRubroStatus }) {
   const { label, active } = STATUS_MAP[status];
   return (
@@ -116,14 +143,30 @@ function StatusPill({ status }: { status: DbRubroStatus }) {
   );
 }
 
-function RubroCard({ rubro, pendientes, onEdit, onGrabacion, onInformeDia }: {
+function RubroCard({ rubro, pendientes, index, onEdit, onGrabacion, onInformeDia }: {
   rubro: DbRubro;
   pendientes: number;
+  index: number;
   onEdit: () => void;
   onGrabacion: () => void;
   onInformeDia: () => void;
 }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   return (
+    <Animated.View style={{
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
+    }}>
     <TouchableOpacity style={styles.obraCard} onPress={onEdit} activeOpacity={0.85}>
       {/* Header: nombre + status */}
       <View style={styles.obraHeader}>
@@ -159,12 +202,28 @@ function RubroCard({ rubro, pendientes, onEdit, onGrabacion, onInformeDia }: {
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
+    </Animated.View>
   );
 }
 
-function PendienteCard({ item, rubroName, onPress }: { item: DbPendingItem; rubroName: string; onPress: () => void }) {
+function PendienteCard({ item, rubroName, index, onPress }: { item: DbPendingItem; rubroName: string; index: number; onPress: () => void }) {
   const s = PENDING_STATUS_STYLE[item.status];
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   return (
+    <Animated.View style={{
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
+    }}>
     <TouchableOpacity style={styles.pendCard} onPress={onPress} activeOpacity={0.85}>
       <View style={styles.pendImageSlot}>
         <Feather name={item.reports ? 'cpu' : 'edit-3'} size={18} color={colors.faint} />
@@ -185,6 +244,7 @@ function PendienteCard({ item, rubroName, onPress }: { item: DbPendingItem; rubr
         </View>
       </View>
     </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -326,8 +386,16 @@ export default function ProyectoScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.safe, styles.loadingCenter]}>
-        <ActivityIndicator color={colors.crema} />
+      <View style={styles.safe}>
+        <View style={[styles.topBar, { top: insets.top }]}>
+          <TouchableOpacity style={styles.circleBtn} onPress={() => router.back()} activeOpacity={0.8}>
+            <Feather name="arrow-left" size={18} color={colors.crema} />
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.banner, { backgroundColor: colors.chip }]} />
+        <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+          {[0, 1, 2].map(i => <SkeletonRubroCard key={i} />)}
+        </ScrollView>
       </View>
     );
   }
@@ -381,30 +449,34 @@ export default function ProyectoScreen() {
           ? <Image source={{ uri: project.image_url }} style={styles.bannerImage} resizeMode="cover" />
           : <ProjectPlaceholder variant="banner" />
         }
-        {/* Gradient scrim — bottom-heavy, sin tapar el hero */}
-        <View style={styles.scrimFar} />
-        <View style={styles.scrimNear} />
+        <LinearGradient
+          colors={['transparent', 'rgba(18,21,26,0.72)']}
+          style={styles.scrim}
+        />
         <View style={styles.bannerOverlay}>
-          {project.logo_url ? (
-            <Image source={{ uri: project.logo_url }} style={styles.projectLogoImg} resizeMode="contain" />
-          ) : null}
-          <Text style={styles.bannerEyebrow}>PROYECTO</Text>
-          <Text style={styles.bannerTitle}>{project.name}</Text>
-          <TouchableOpacity
-            style={styles.bannerStatusBadge}
-            onPress={() => setStatusSheetVisible(true)}
-            activeOpacity={0.8}
-          >
-            {projectStatus ? (
-              <View style={[styles.bannerStatusDot, { backgroundColor: PROJECT_STATUS_OPTIONS.find(o => o.value === projectStatus)?.color }]} />
-            ) : (
-              <Feather name="circle" size={8} color="rgba(255,255,255,0.4)" />
-            )}
-            <Text style={styles.bannerStatusText}>
-              {PROJECT_STATUS_OPTIONS.find(o => o.value === projectStatus)?.label ?? 'Sin estado'}
-            </Text>
-            <Feather name="chevron-right" size={11} color="rgba(255,255,255,0.45)" />
-          </TouchableOpacity>
+          <View style={styles.bannerRow}>
+            <View style={styles.bannerTextCol}>
+              <Text style={styles.bannerTitle}>{project.name}</Text>
+              <TouchableOpacity
+                style={styles.bannerStatusBadge}
+                onPress={() => setStatusSheetVisible(true)}
+                activeOpacity={0.8}
+              >
+                {projectStatus ? (
+                  <View style={[styles.bannerStatusDot, { backgroundColor: PROJECT_STATUS_OPTIONS.find(o => o.value === projectStatus)?.color }]} />
+                ) : (
+                  <Feather name="circle" size={8} color="rgba(255,255,255,0.4)" />
+                )}
+                <Text style={styles.bannerStatusText}>
+                  {PROJECT_STATUS_OPTIONS.find(o => o.value === projectStatus)?.label ?? 'Sin estado'}
+                </Text>
+                <Feather name="chevron-right" size={11} color="rgba(255,255,255,0.45)" />
+              </TouchableOpacity>
+            </View>
+            {project.logo_url ? (
+              <Image source={{ uri: project.logo_url }} style={styles.projectLogoImg} resizeMode="contain" />
+            ) : null}
+          </View>
         </View>
       </View>
 
@@ -414,9 +486,10 @@ export default function ProyectoScreen() {
         <FlatList
           data={rubros}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <RubroCard
               rubro={item}
+              index={index}
               pendientes={pendingCountPerRubro[item.id] ?? 0}
               onEdit={() => router.push({
                 pathname: '/rubro/[id]',
@@ -466,9 +539,10 @@ export default function ProyectoScreen() {
         <FlatList
           data={filteredPendientes}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <PendienteCard
               item={item}
+              index={index}
               rubroName={rubroById[item.rubro_id]?.name ?? '—'}
               onPress={() => router.push(`/pendiente/${item.id}`)}
             />
@@ -477,24 +551,11 @@ export default function ProyectoScreen() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View style={styles.pendFiltersWrap}>
-              <View style={styles.pendTypeToggle}>
-                <TouchableOpacity
-                  style={[styles.pendTypeBtn, pendType === 'contratistas' && styles.pendTypeBtnActive]}
-                  onPress={() => setPendType('contratistas')}
-                  activeOpacity={0.8}
-                >
-                  <Feather name="tool" size={12} color={pendType === 'contratistas' ? '#FFFFFF' : colors.gris} />
-                  <Text style={[styles.pendTypeBtnText, pendType === 'contratistas' && styles.pendTypeBtnTextActive]}>Contratistas</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.pendTypeBtn, pendType === 'oficina' && styles.pendTypeBtnActive]}
-                  onPress={() => setPendType('oficina')}
-                  activeOpacity={0.8}
-                >
-                  <Feather name="briefcase" size={12} color={pendType === 'oficina' ? '#FFFFFF' : colors.gris} />
-                  <Text style={[styles.pendTypeBtnText, pendType === 'oficina' && styles.pendTypeBtnTextActive]}>Oficina técnica</Text>
-                </TouchableOpacity>
-              </View>
+              <SlidingTabs
+                options={['Contratistas', 'Oficina técnica']}
+                selected={pendType === 'contratistas' ? 'Contratistas' : 'Oficina técnica'}
+                onChange={(v) => setPendType(v === 'Contratistas' ? 'contratistas' : 'oficina')}
+              />
               {rubros.length > 1 && (
                 <ScrollView
                   horizontal
@@ -725,30 +786,35 @@ const styles = StyleSheet.create({
     shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 14, elevation: 5,
   },
 
-  banner: { height: 280, backgroundColor: colors.chip },
+  banner: {
+    height: 230, backgroundColor: colors.chip,
+    borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
+    overflow: 'hidden',
+  },
   bannerImage: { width: '100%', height: '100%' },
-  scrimFar: {
-    position: 'absolute', bottom: 60, left: 0, right: 0, height: 80,
-    backgroundColor: 'rgba(18,21,26,0.28)',
-  },
-  scrimNear: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, height: 80,
-    backgroundColor: 'rgba(18,21,26,0.72)',
-  },
+  scrim: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 150 },
   bannerOverlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: spacing.xl, paddingBottom: spacing.lg, paddingTop: spacing.sm,
-    gap: 2,
   },
+  bannerRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 12 },
+  bannerTextCol: { flex: 1, gap: 2 },
   bannerEyebrow: {
     fontFamily: fonts.mono.regular, fontSize: 9.5, letterSpacing: 1.4,
     textTransform: 'uppercase', color: 'rgba(255,255,255,0.65)',
   },
-  bannerTitle: { fontFamily: fonts.archivo.bold, fontSize: 24, color: '#FFFFFF', letterSpacing: -0.5 },
+  bannerTitle: { fontFamily: fonts.archivo.bold, fontSize: 22, color: '#FFFFFF', letterSpacing: -0.5 },
   projectLogoImg: {
-    width: 52, height: 52, borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.08)', marginBottom: 4,
+    width: 52, height: 52, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)', flexShrink: 0,
   },
+  bannerStatusBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12,
+    paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start',
+  },
+  bannerStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  bannerStatusText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: 'rgba(255,255,255,0.85)' },
 
   bottomBarWrap: {
     position: 'absolute', left: 0, right: 0,
@@ -775,16 +841,6 @@ const styles = StyleSheet.create({
   badgeDotText: { fontFamily: fonts.archivo.bold, fontSize: 9, color: '#FFFFFF' },
 
   listContent: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, paddingBottom: 110, gap: 10 },
-
-  pendTypeToggle: {
-    flexDirection: 'row', backgroundColor: colors.chip, borderRadius: 22, padding: 4, gap: 4, marginBottom: 10,
-  },
-  pendTypeBtn: {
-    flex: 1, height: 38, borderRadius: 19, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-  },
-  pendTypeBtnActive: { backgroundColor: colors.crema },
-  pendTypeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 12.5, color: colors.gris },
-  pendTypeBtnTextActive: { color: '#FFFFFF' },
 
   obraCard: {
     borderRadius: 20, backgroundColor: colors.panel, padding: 16, gap: 8,
@@ -860,7 +916,7 @@ const styles = StyleSheet.create({
   typeChipBtnText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: colors.crema },
   typeChipBtnTextActive: { color: '#FFFFFF' },
   sheetBtn: {
-    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    height: 54, borderRadius: 27, backgroundColor: colors.crema,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
   },
   sheetBtnDisabled: { opacity: 0.35 },
@@ -889,15 +945,6 @@ const styles = StyleSheet.create({
 
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
-
-  // Banner status badge
-  bannerStatusBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 7,
-    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12,
-    paddingHorizontal: 10, paddingVertical: 5, alignSelf: 'flex-start',
-  },
-  bannerStatusDot: { width: 6, height: 6, borderRadius: 3 },
-  bannerStatusText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: 'rgba(255,255,255,0.85)' },
 
   // Pendientes filters
   pendFiltersWrap: { gap: 8, marginBottom: 6 },

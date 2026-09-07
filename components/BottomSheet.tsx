@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Animated, Modal, TouchableOpacity, StyleSheet,
+  Modal, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS,
+} from 'react-native-reanimated';
 
 interface Props {
   visible: boolean;
@@ -13,40 +16,41 @@ interface Props {
 
 export function BottomSheet({ visible, onClose, children, avoidKeyboard = false }: Props) {
   const [mounted, setMounted] = useState(visible);
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const translateY = useSharedValue(600);
+  const backdropOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: 220,
-        useNativeDriver: true,
-      }).start();
+      backdropOpacity.value = withTiming(1, { duration: 280 });
+      translateY.value = withSpring(0, { damping: 22, stiffness: 200, mass: 0.9 });
     } else {
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) setMounted(false);
+      backdropOpacity.value = withTiming(0, { duration: 220 });
+      translateY.value = withSpring(600, { damping: 28, stiffness: 280 }, (finished) => {
+        if (finished) runOnJS(setMounted)(false);
       });
     }
   }, [visible]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
 
   return (
     <Modal
       visible={mounted}
       transparent
-      animationType="slide"
+      animationType="none"
       onRequestClose={onClose}
     >
-      {/* Backdrop fades in independently over the sliding sheet */}
       <Animated.View
-        style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: backdropOpacity }]}
+        style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}
         pointerEvents="none"
       />
-
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -57,7 +61,9 @@ export function BottomSheet({ visible, onClose, children, avoidKeyboard = false 
           activeOpacity={1}
           onPress={onClose}
         />
-        {children}
+        <Animated.View style={sheetStyle}>
+          {children}
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );

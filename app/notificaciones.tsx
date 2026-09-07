@@ -1,4 +1,5 @@
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, Easing } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -39,9 +40,24 @@ const NOTIF_COLOR: Record<NotifType, string> = {
   cambio: colors.gris,
 };
 
-function NotifRow({ notif }: { notif: Notif }) {
+function NotifRow({ notif, index }: { notif: Notif; index: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   const iconColor = NOTIF_COLOR[notif.type];
   return (
+    <Animated.View style={{
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
+    }}>
     <View style={[styles.row, notif.unread && styles.rowUnread]}>
       <View style={[styles.iconCircle, { backgroundColor: `${iconColor}18` }]}>
         <Feather name={NOTIF_ICON[notif.type]} size={16} color={iconColor} />
@@ -55,6 +71,7 @@ function NotifRow({ notif }: { notif: Notif }) {
         <Text style={styles.rowTime}>{notif.time}</Text>
       </View>
     </View>
+    </Animated.View>
   );
 }
 
@@ -74,15 +91,14 @@ export default function NotificacionesScreen() {
       </View>
 
       <View style={styles.titleBlock}>
-        <Text style={styles.eyebrow}>ACTIVIDAD</Text>
         <Text style={styles.heading}>
           {unreadCount > 0 ? `${unreadCount} nuevas` : 'Notificaciones'}
         </Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent}>
-        {MOCK_NOTIFS.map((n) => (
-          <NotifRow key={n.id} notif={n} />
+        {MOCK_NOTIFS.map((n, i) => (
+          <NotifRow key={n.id} notif={n} index={i} />
         ))}
       </ScrollView>
     </SafeAreaView>

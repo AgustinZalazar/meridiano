@@ -187,7 +187,6 @@ export default function CuentaScreen() {
       >
         <View style={styles.topBar}>
           <View style={styles.topBarLeft}>
-            <Text style={styles.eyebrow}>MI CUENTA</Text>
             <Text style={styles.heading}>{displayName}</Text>
             {email ? <Text style={styles.subheading}>{email}</Text> : null}
           </View>
@@ -574,7 +573,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, fontFamily: fonts.archivo.semibold, fontSize: 15, color: colors.crema,
   },
   sheetBtn: {
-    height: 54, borderRadius: 27, backgroundColor: colors.arena,
+    height: 54, borderRadius: 27, backgroundColor: colors.crema,
     alignItems: 'center', justifyContent: 'center',
   },
   sheetBtnDisabled: { opacity: 0.35 },

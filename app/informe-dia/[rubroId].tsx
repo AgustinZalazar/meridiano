@@ -314,7 +314,7 @@ const s = StyleSheet.create({
 
   closeBtn: {
     height: 36, paddingHorizontal: 16, borderRadius: 18,
-    backgroundColor: colors.arena, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.crema, alignItems: 'center', justifyContent: 'center',
   },
   closeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: '#FFF' },
 
@@ -386,7 +386,7 @@ const s = StyleSheet.create({
   typeBtnTextActive: { color: '#FFF' },
 
   startBtn: {
-    height: 54, borderRadius: 27, backgroundColor: colors.arena, width: '100%',
+    height: 54, borderRadius: 27, backgroundColor: colors.crema, width: '100%',
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 8,
   },
   startBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFF' },

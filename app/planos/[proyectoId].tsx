@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, Alert } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, Alert, Animated, Easing } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -36,9 +36,25 @@ const MOCK_PLANOS: Record<string, { projectName: string; planos: Plano[] }> = {
   },
 };
 
-function PlanoCard({ plano, onPress, isLoading }: { plano: Plano; onPress: () => void; isLoading: boolean }) {
+function PlanoCard({ plano, onPress, isLoading, index }: { plano: Plano; onPress: () => void; isLoading: boolean; index: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85} disabled={isLoading}>
+    <Animated.View style={{
+      flex: 1,
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
+    }}>
+    <TouchableOpacity style={[styles.card, { flex: 1 }]} onPress={onPress} activeOpacity={0.85} disabled={isLoading}>
       <View style={styles.thumbnail}>
         <Image source={{ uri: plano.imageUri }} style={styles.thumbnailImage} resizeMode="cover" />
         <View style={styles.typeTag}>
@@ -60,6 +76,7 @@ function PlanoCard({ plano, onPress, isLoading }: { plano: Plano; onPress: () =>
         <Text style={styles.cardDate}>{plano.date}</Text>
       </View>
     </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -100,7 +117,6 @@ export default function PlanosScreen() {
       </View>
 
       <View style={styles.titleBlock}>
-        <Text style={styles.eyebrow}>PROYECTO</Text>
         <Text style={styles.heading}>Planos</Text>
         <Text style={styles.subheading}>{data.projectName}</Text>
       </View>
@@ -108,9 +124,10 @@ export default function PlanosScreen() {
       <FlatList
         data={data.planos}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <PlanoCard
             plano={item}
+            index={index}
             isLoading={loadingId === item.id}
             onPress={() => openPlano(item)}
           />

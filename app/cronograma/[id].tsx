@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Animated, Easing } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -156,6 +156,19 @@ function buildReportHTML(proj: DbProject, rubs: DbRubro[], today: Date): string 
   </body></html>`;
 }
 
+// ─── Count-up number ─────────────────────────────────────────────────────────
+
+function CountUp({ value, style }: { value: number; style?: any }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  const [disp, setDisp] = useState(0);
+  useEffect(() => {
+    const id = anim.addListener(({ value: v }) => setDisp(Math.round(v)));
+    Animated.timing(anim, { toValue: value, duration: 700, useNativeDriver: false }).start();
+    return () => anim.removeListener(id);
+  }, [value]);
+  return <Text style={style}>{disp}</Text>;
+}
+
 // ─── Gantt chart ─────────────────────────────────────────────────────────────
 
 function GanttChart({ rubros, projectStart, projectEnd }: {
@@ -163,6 +176,25 @@ function GanttChart({ rubros, projectStart, projectEnd }: {
   projectStart: Date;
   projectEnd: Date;
 }) {
+  const barProgress = useRef(new Animated.Value(0)).current;
+  const todayGlow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(barProgress, {
+      toValue: 1, duration: 1000, delay: 250,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+      useNativeDriver: false,
+    }).start();
+    const glowLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(todayGlow, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(todayGlow, { toValue: 0, duration: 1000, useNativeDriver: true }),
+      ])
+    );
+    glowLoop.start();
+    return () => glowLoop.stop();
+  }, []);
+
   const today = new Date();
   const months = getMonths(projectStart, projectEnd);
   const CHART_W = months.length * MONTH_W;
@@ -198,9 +230,9 @@ function GanttChart({ rubros, projectStart, projectEnd }: {
 
         {/* Today line */}
         {todayX >= LABEL_W && todayX <= TOTAL_W && (
-          <View style={[g.todayLine, { left: todayX }]}>
+          <Animated.View style={[g.todayLine, { left: todayX, opacity: todayGlow.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }]}>
             <Text style={g.todayLabel}>HOY</Text>
-          </View>
+          </Animated.View>
         )}
 
         {/* Rubro rows */}
@@ -231,7 +263,12 @@ function GanttChart({ rubros, projectStart, projectEnd }: {
 
               {/* Single bar colored by status */}
               {px1 !== null && px2 !== null && px2 > px1 && (
-                <View style={[g.bar, { left: px1, width: Math.max(px2 - px1, 4), top: barTop, backgroundColor: barBg }]} />
+                <Animated.View style={[g.bar, {
+                  left: px1,
+                  width: barProgress.interpolate({ inputRange: [0, 1], outputRange: [0, Math.max(px2 - px1, 4)] }),
+                  top: barTop,
+                  backgroundColor: barBg,
+                }]} />
               )}
             </View>
           );
@@ -255,7 +292,15 @@ const g = StyleSheet.create({
 
 // ─── Rubro detail card ────────────────────────────────────────────────────────
 
-function DetailCard({ r, today }: { r: DbRubro; today: Date }) {
+function DetailCard({ r, today, index }: { r: DbRubro; today: Date; index: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(index * 65),
+      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   const delayed = isDelayed(r, today);
   const dev = deviation(r, today);
 
@@ -270,6 +315,13 @@ function DetailCard({ r, today }: { r: DbRubro; today: Date }) {
   else if (r.status === 'en_curso') cardBg = 'rgba(217,119,87,0.06)';
 
   return (
+    <Animated.View style={{
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      transform: [
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+      ],
+    }}>
     <View style={[s.detailCard, { backgroundColor: cardBg }]}>
       <View style={s.detailTop}>
         <Text style={s.detailName} numberOfLines={2}>{r.name}</Text>
@@ -311,6 +363,7 @@ function DetailCard({ r, today }: { r: DbRubro; today: Date }) {
         </View>
       )}
     </View>
+    </Animated.View>
   );
 }
 
@@ -430,7 +483,6 @@ export default function CronogramaScreen() {
           <Feather name="arrow-left" size={18} color={colors.crema} />
         </TouchableOpacity>
         <View style={s.topCenter}>
-          <Text style={s.topEyebrow}>PROYECTO</Text>
           <Text style={s.topTitle}>Cronograma</Text>
         </View>
         <TouchableOpacity style={s.circleBtn} onPress={handleExportPDF} activeOpacity={0.8} disabled={exportingPDF}>
@@ -474,25 +526,24 @@ export default function CronogramaScreen() {
         {/* Stats */}
         <View style={s.statsRow}>
           <View style={s.stat}>
-            <Text style={[s.statNum, { color: colors.success }]}>{completed}</Text>
+            <CountUp value={completed} style={[s.statNum, { color: colors.success }]} />
             <Text style={s.statLabel}>Completados</Text>
           </View>
           <View style={s.stat}>
-            <Text style={[s.statNum, { color: colors.arena }]}>{active}</Text>
+            <CountUp value={active} style={[s.statNum, { color: colors.arena }]} />
             <Text style={s.statLabel}>En curso</Text>
           </View>
           <View style={s.stat}>
-            <Text style={[s.statNum, { color: delayed > 0 ? colors.error : colors.faint }]}>{delayed}</Text>
+            <CountUp value={delayed} style={[s.statNum, { color: delayed > 0 ? colors.error : colors.faint }]} />
             <Text style={s.statLabel}>Retrasados</Text>
           </View>
           <View style={s.stat}>
-            <Text style={s.statNum}>{rubros.length}</Text>
+            <CountUp value={rubros.length} style={s.statNum} />
             <Text style={s.statLabel}>Total</Text>
           </View>
         </View>
 
         {/* Gantt */}
-        <Text style={s.sectionLabel}>CRONOGRAMA DE RUBROS</Text>
         <View style={s.ganttCard}>
           {ganttStart && ganttEnd ? (
             <>
@@ -517,7 +568,7 @@ export default function CronogramaScreen() {
         {/* Rubro detail list */}
         <Text style={[s.sectionLabel, { marginTop: spacing.lg }]}>DETALLE POR RUBRO</Text>
         <View style={s.detailList}>
-          {rubros.map(r => <DetailCard key={r.id} r={r} today={today} />)}
+          {rubros.map((r, i) => <DetailCard key={r.id} r={r} today={today} index={i} />)}
           {rubros.length === 0 && (
             <View style={s.emptyState}>
               <Text style={s.emptyText}>Sin rubros cargados</Text>
