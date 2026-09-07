@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { SlidingTabs } from '../../components/SlidingTabs';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -211,20 +212,12 @@ export default function EditarRubroScreen() {
         {/* Estado */}
         <View style={s.field}>
           <Text style={s.fieldLabel}>ESTADO</Text>
-          <View style={s.statusRow}>
-            {STATUS_OPTIONS.map((opt) => (
-              <TouchableOpacity
-                key={opt.key}
-                style={[s.statusBtn, status === opt.key && s.statusBtnActive]}
-                onPress={() => setStatus(opt.key)}
-                activeOpacity={0.75}
-              >
-                <Text style={[s.statusBtnText, status === opt.key && s.statusBtnTextActive]}>
-                  {opt.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <SlidingTabs
+            options={STATUS_OPTIONS.map(o => o.label)}
+            selected={STATUS_OPTIONS.find(o => o.key === status)?.label ?? STATUS_OPTIONS[0].label}
+            onChange={(label) => setStatus(STATUS_OPTIONS.find(o => o.label === label)!.key)}
+            style={{ alignSelf: 'stretch' }}
+          />
         </View>
 
         {error && <Text style={s.errorText}>{error}</Text>}
@@ -297,15 +290,6 @@ const s = StyleSheet.create({
     shadowColor: '#12151A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
 
-  statusRow: { flexDirection: 'row', gap: spacing.sm },
-  statusBtn: {
-    flex: 1, height: 46, borderRadius: 14,
-    backgroundColor: colors.panel, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#12151A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
-  },
-  statusBtnActive: { backgroundColor: colors.crema },
-  statusBtnText: { fontFamily: fonts.archivo.bold, fontSize: 12.5, color: colors.gris },
-  statusBtnTextActive: { color: '#FFFFFF' },
 
   errorText: {
     paddingHorizontal: spacing.xl,

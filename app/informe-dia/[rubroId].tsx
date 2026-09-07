@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { SlidingTabs } from '../../components/SlidingTabs';
 import {
   View, Text, TouchableOpacity, FlatList, StyleSheet,
   ActivityIndicator, Alert,
@@ -179,24 +180,12 @@ export default function InformeDiaScreen() {
 
           {/* Tipo */}
           <Text style={s.typeLabel}>TIPO DE INFORME</Text>
-          <View style={s.typeToggle}>
-            <TouchableOpacity
-              style={[s.typeBtn, reportType === 'contratistas' && s.typeBtnActive]}
-              onPress={() => setReportType('contratistas')}
-              activeOpacity={0.8}
-            >
-              <Feather name="tool" size={13} color={reportType === 'contratistas' ? '#FFF' : colors.gris} />
-              <Text style={[s.typeBtnText, reportType === 'contratistas' && s.typeBtnTextActive]}>Contratistas</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.typeBtn, reportType === 'oficina' && s.typeBtnActive]}
-              onPress={() => setReportType('oficina')}
-              activeOpacity={0.8}
-            >
-              <Feather name="briefcase" size={13} color={reportType === 'oficina' ? '#FFF' : colors.gris} />
-              <Text style={[s.typeBtnText, reportType === 'oficina' && s.typeBtnTextActive]}>Oficina técnica</Text>
-            </TouchableOpacity>
-          </View>
+          <SlidingTabs
+            options={['Contratistas', 'Oficina técnica']}
+            selected={reportType === 'contratistas' ? 'Contratistas' : 'Oficina técnica'}
+            onChange={(v) => setReportType(v === 'Contratistas' ? 'contratistas' : 'oficina')}
+            style={s.typeToggle}
+          />
 
           <TouchableOpacity
             style={[s.startBtn, starting && { opacity: 0.5 }]}
@@ -373,17 +362,7 @@ const s = StyleSheet.create({
     fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
     textTransform: 'uppercase', color: colors.gris, fontWeight: '700', marginTop: 8,
   },
-  typeToggle: {
-    flexDirection: 'row', backgroundColor: colors.chip, borderRadius: 24,
-    padding: 4, gap: 4, width: '100%',
-  },
-  typeBtn: {
-    flex: 1, height: 44, borderRadius: 21, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center', gap: 7,
-  },
-  typeBtnActive: { backgroundColor: colors.crema },
-  typeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: colors.gris },
-  typeBtnTextActive: { color: '#FFF' },
+  typeToggle: { alignSelf: 'stretch' },
 
   startBtn: {
     height: 54, borderRadius: 27, backgroundColor: colors.crema, width: '100%',

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, TextInput, ActivityIndicator, Alert, Animated } from 'react-native';
+import { SlidingTabs } from '../../components/SlidingTabs';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -30,11 +31,6 @@ const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: 'resuelto',    label: 'Resuelto'    },
 ];
 
-const STATUS_COLOR: Record<Status, string> = {
-  pendiente:   colors.crema,
-  en_revision: colors.arena,
-  resuelto:    colors.success,
-};
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -283,29 +279,12 @@ export default function DetallePendienteScreen() {
               <Feather name="activity" size={12} color={colors.gris} />
               <Text style={styles.sectionLabel}>ESTADO</Text>
             </View>
-            <View style={styles.statusRow}>
-              {STATUS_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[
-                    styles.statusBtn,
-                    status === opt.value && { backgroundColor: STATUS_COLOR[opt.value] + '22', borderColor: STATUS_COLOR[opt.value] },
-                  ]}
-                  onPress={() => setStatus(opt.value)}
-                  activeOpacity={0.8}
-                >
-                  {status === opt.value && (
-                    <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[opt.value] }]} />
-                  )}
-                  <Text style={[
-                    styles.statusBtnText,
-                    status === opt.value && { color: STATUS_COLOR[opt.value] },
-                  ]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <SlidingTabs
+              options={STATUS_OPTIONS.map(o => o.label)}
+              selected={STATUS_OPTIONS.find(o => o.value === status)?.label ?? STATUS_OPTIONS[0].label}
+              onChange={(label) => setStatus(STATUS_OPTIONS.find(o => o.label === label)!.value)}
+              style={{ alignSelf: 'stretch' }}
+            />
           </View>
 
           {/* Nota */}
@@ -461,14 +440,6 @@ const styles = StyleSheet.create({
   },
   verInformeText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: colors.arena },
 
-  statusRow: { flexDirection: 'row', gap: spacing.sm },
-  statusBtn: {
-    flex: 1, height: 42, borderRadius: 21, backgroundColor: colors.chip,
-    alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6,
-    borderWidth: 1.5, borderColor: 'transparent',
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusBtnText: { fontFamily: fonts.archivo.bold, fontSize: 12.5, color: colors.gris },
 
   noteField: {
     backgroundColor: colors.panel, borderRadius: 16,

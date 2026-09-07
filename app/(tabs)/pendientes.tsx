@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, Easing } from 'react-native';
 import { BottomSheet } from '../../components/BottomSheet';
+import { SlidingTabs } from '../../components/SlidingTabs';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -138,24 +139,12 @@ export default function PendientesScreen() {
   const insets = useSafeAreaInsets();
   const [activeType, setActiveType] = useState<ReportType>('contratistas');
   const [items, setItems] = useState<DbPending[]>([]);
-  const toggleAnim = useRef(new Animated.Value(0)).current;
-  const [toggleWidth, setToggleWidth] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filterVisible, setFilterVisible] = useState(false);
   const [statusFilter, setStatusFilter] = useState<PendingStatus | 'all'>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'ai' | 'manual'>('all');
 
   const hasActiveFilters = statusFilter !== 'all' || sourceFilter !== 'all';
-
-  function switchType(t: ReportType) {
-    setActiveType(t);
-    Animated.spring(toggleAnim, {
-      toValue: t === 'oficina' ? 1 : 0,
-      tension: 80,
-      friction: 10,
-      useNativeDriver: true,
-    }).start();
-  }
 
   function resetFilters() {
     setStatusFilter('all');
@@ -198,43 +187,12 @@ export default function PendientesScreen() {
       </View>
 
       {/* Type toggle */}
-      <View
+      <SlidingTabs
+        options={['Contratistas', 'Oficina técnica']}
+        selected={activeType === 'contratistas' ? 'Contratistas' : 'Oficina técnica'}
+        onChange={(v) => setActiveType(v === 'Contratistas' ? 'contratistas' : 'oficina')}
         style={styles.typeToggle}
-        onLayout={(e) => setToggleWidth(e.nativeEvent.layout.width)}
-      >
-        {toggleWidth > 0 && (
-          <Animated.View style={[
-            styles.typeIndicator,
-            {
-              width: (toggleWidth - 8) / 2,
-              transform: [{ translateX: toggleAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, (toggleWidth - 8) / 2],
-              }) }],
-            },
-          ]} />
-        )}
-        <TouchableOpacity
-          style={styles.typeBtn}
-          onPress={() => switchType('contratistas')}
-          activeOpacity={0.8}
-        >
-          <Feather name="tool" size={13} color={activeType === 'contratistas' ? '#FFFFFF' : colors.gris} />
-          <Text style={[styles.typeBtnText, activeType === 'contratistas' && styles.typeBtnTextActive]}>
-            Contratistas
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.typeBtn}
-          onPress={() => switchType('oficina')}
-          activeOpacity={0.8}
-        >
-          <Feather name="briefcase" size={13} color={activeType === 'oficina' ? '#FFFFFF' : colors.gris} />
-          <Text style={[styles.typeBtnText, activeType === 'oficina' && styles.typeBtnTextActive]}>
-            Oficina técnica
-          </Text>
-        </TouchableOpacity>
-      </View>
+      />
 
       {/* List */}
       <ScrollView
@@ -337,21 +295,8 @@ const styles = StyleSheet.create({
   },
 
   typeToggle: {
-    flexDirection: 'row', marginHorizontal: spacing.xl, marginBottom: spacing.md,
-    backgroundColor: colors.chip, borderRadius: 24, padding: 4, gap: 4,
-    overflow: 'hidden',
+    alignSelf: 'stretch', marginHorizontal: spacing.xl, marginBottom: spacing.md,
   },
-  typeIndicator: {
-    position: 'absolute', top: 4, left: 4, height: 42, borderRadius: 21,
-    backgroundColor: colors.crema,
-  },
-  typeBtn: {
-    flex: 1, height: 42, borderRadius: 21, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center', gap: 7, zIndex: 1,
-  },
-  typeBtnActive: {},
-  typeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: colors.gris },
-  typeBtnTextActive: { color: '#FFFFFF' },
 
   list: { flex: 1 },
   listContent: { paddingHorizontal: spacing.md + 4, paddingTop: spacing.xs, gap: 10 },

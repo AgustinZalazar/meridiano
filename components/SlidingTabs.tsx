@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Animated, Easing,
-  type LayoutChangeEvent,
+  type LayoutChangeEvent, type StyleProp, type ViewStyle,
 } from 'react-native';
 import { colors, fonts } from '../constants/theme';
 
@@ -9,9 +9,10 @@ interface Props {
   options: string[];
   selected: string;
   onChange: (v: string) => void;
+  style?: StyleProp<ViewStyle>;
 }
 
-export function SlidingTabs({ options, selected, onChange }: Props) {
+export function SlidingTabs({ options, selected, onChange, style }: Props) {
   const indicatorLeft  = useRef(new Animated.Value(0)).current;
   const indicatorWidth = useRef(new Animated.Value(0)).current;
   const [layouts, setLayouts] = useState<Array<{ x: number; w: number }>>([]);
@@ -54,7 +55,7 @@ export function SlidingTabs({ options, selected, onChange }: Props) {
   }, [selected, layouts, options.length]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, style]}>
       {ready && (
         <Animated.View
           style={[styles.indicator, { left: indicatorLeft, width: indicatorWidth }]}
