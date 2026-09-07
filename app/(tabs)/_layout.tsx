@@ -1,9 +1,9 @@
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { colors } from '../../constants/theme';
+import { colors, fonts } from '../../constants/theme';
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -11,6 +11,12 @@ const TAB_ICONS: Record<string, FeatherIconName> = {
   index: 'grid',
   pendientes: 'clock',
   cuenta: 'user',
+};
+
+const TAB_LABELS: Record<string, string> = {
+  index: 'Proyectos',
+  pendientes: 'Pendientes',
+  cuenta: 'Cuenta',
 };
 
 function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
@@ -37,6 +43,8 @@ function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             }
           }
 
+          const label = TAB_LABELS[route.name] ?? route.name;
+
           return (
             <TouchableOpacity
               key={route.key}
@@ -46,9 +54,12 @@ function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             >
               <Feather
                 name={iconName}
-                size={20}
+                size={18}
                 color={isFocused ? '#FFFFFF' : 'rgba(255,255,255,0.4)'}
               />
+              <Text style={[styles.tabLabel, { color: isFocused ? '#FFFFFF' : 'rgba(255,255,255,0.4)' }]}>
+                {label}
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -92,9 +103,15 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   tab: {
-    width: 62,
+    paddingHorizontal: 14,
     height: 62,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 3,
+  },
+  tabLabel: {
+    fontFamily: fonts.archivo.bold,
+    fontSize: 9,
+    letterSpacing: 0.3,
   },
 });
