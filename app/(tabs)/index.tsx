@@ -244,6 +244,14 @@ export default function ProyectosScreen() {
         <SlidingTabs options={FILTERS} selected={filter} onChange={setFilter} />
       </View>
 
+      {!loading && projects.length > 0 && (
+        <TouchableOpacity style={styles.simEntry} onPress={() => router.push('/simulacion')} activeOpacity={0.8}>
+          <Feather name="zap" size={13} color={colors.arena} />
+          <Text style={styles.simEntryText}>Simular nuevo proyecto</Text>
+          <Feather name="chevron-right" size={13} color={colors.faint} />
+        </TouchableOpacity>
+      )}
+
       <ScrollView
         style={styles.list}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
@@ -494,6 +502,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.crema,
   },
+  simEntry: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginHorizontal: spacing.xl, marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: 10,
+    borderRadius: 12, backgroundColor: colors.panel,
+    shadowColor: '#12151A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+  },
+  simEntryText: {
+    flex: 1, fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.crema,
+  },
+
   fabWrap: {
     position: 'absolute',
     right: spacing.xl,

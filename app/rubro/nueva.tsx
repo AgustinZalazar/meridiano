@@ -10,6 +10,11 @@ import { supabase } from '../../lib/supabase';
 
 type RubroStatus = 'sin_iniciar' | 'en_curso' | 'completada';
 
+const TIPO_OPTIONS = [
+  'Estructura', 'Mampostería', 'Terminaciones', 'Electricidad',
+  'Plomería', 'Carpintería', 'Pintura', 'Paisajismo', 'Otro',
+];
+
 const STATUS_OPTIONS: { key: RubroStatus; label: string }[] = [
   { key: 'sin_iniciar', label: 'Sin iniciar' },
   { key: 'en_curso',    label: 'En curso'    },
@@ -21,6 +26,7 @@ export default function NuevoRubroScreen() {
   const { projectId } = useLocalSearchParams<{ projectId: string }>();
 
   const [name,       setName]       = useState('');
+  const [tipo,       setTipo]       = useState<string | null>(null);
   const [contractor, setContractor] = useState('');
   const [code,       setCode]       = useState('');
   const [status,     setStatus]     = useState<RubroStatus>('sin_iniciar');
@@ -42,6 +48,7 @@ export default function NuevoRubroScreen() {
     const { error: dbError } = await supabase.from('rubros').insert({
       project_id:  pid,
       name:        name.trim(),
+      tipo:        tipo || null,
       contractor:  contractor.trim() || null,
       code:        finalCode,
       status,
@@ -96,6 +103,23 @@ export default function NuevoRubroScreen() {
             autoFocus
             returnKeyType="next"
           />
+        </View>
+
+        {/* Tipo */}
+        <View style={s.field}>
+          <Text style={s.fieldLabel}>TIPO <Text style={s.fieldOptional}>(opcional)</Text></Text>
+          <View style={s.tipoRow}>
+            {TIPO_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={[s.tipoChip, tipo === opt && s.tipoChipActive]}
+                onPress={() => setTipo(t => t === opt ? null : opt)}
+                activeOpacity={0.75}
+              >
+                <Text style={[s.tipoChipText, tipo === opt && s.tipoChipTextActive]}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Contratista */}
@@ -206,6 +230,15 @@ const s = StyleSheet.create({
     fontFamily: fonts.archivo.semibold, fontSize: 15, color: colors.crema,
     shadowColor: '#12151A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
   },
+  tipoRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  tipoChip: {
+    height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.panel,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  tipoChipActive: { backgroundColor: colors.crema },
+  tipoChipText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: colors.gris },
+  tipoChipTextActive: { color: '#FFFFFF' },
+
   errorText: {
     paddingHorizontal: spacing.xl,
     fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.error,

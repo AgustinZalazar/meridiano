@@ -161,6 +161,12 @@ export default function NuevoProyectoScreen() {
           </View>
         </View>
 
+        <TouchableOpacity style={styles.simLink} onPress={() => router.push('/simulacion')} activeOpacity={0.7}>
+          <Feather name="zap" size={12} color={colors.arena} />
+          <Text style={styles.simLinkText}>Simular duración y materiales</Text>
+          <Feather name="chevron-right" size={12} color={colors.faint} />
+        </TouchableOpacity>
+
         {error && <Text style={styles.errorText}>{error}</Text>}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -221,5 +227,10 @@ const styles = StyleSheet.create({
   datesRow: { flexDirection: 'row', alignItems: 'flex-start' },
   dateCol: { flex: 1 },
   dateDivider: { width: spacing.md },
+  simLink: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: spacing.sm,
+  },
+  simLinkText: { flex: 1, fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.gris },
   errorText: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.error },
 });

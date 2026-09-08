@@ -1,11 +1,21 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../constants/theme';
-import { DateField } from '../../components/DateField';
 import { supabase } from '../../lib/supabase';
+
+const UNIT_OPTIONS = ['kg', 'm²', 'm³', 'm', 'l', 'un.'];
+const UNIT_NAMES: Record<string, string> = {
+  'kg': 'kilogramo',
+  'm²': 'metro cuadrado',
+  'm³': 'metro cúbico',
+  'm': 'metro lineal',
+  'l': 'litro',
+  'un.': 'unidad',
+};
 
 function parseDateParam(raw: string | undefined): Date | null {
   if (!raw) return null;
@@ -24,12 +34,11 @@ export default function NuevoMaterialScreen() {
 
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('');
+  const [unitCustom, setUnitCustom] = useState(false);
   const [supplier, setSupplier] = useState('');
   const [unitCost, setUnitCost] = useState('');
   const [estimatedQty, setEstimatedQty] = useState('');
-  const [estimatedDate, setEstimatedDate] = useState<Date | null>(null);
   const [actualQty, setActualQty] = useState('');
-  const [actualDate, setActualDate] = useState<Date | null>(null);
   const [rubroId, setRubroId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,9 +58,9 @@ export default function NuevoMaterialScreen() {
       supplier: supplier.trim() || null,
       unit_cost: unitCost ? parseFloat(unitCost) : null,
       estimated_quantity: estimatedQty ? parseFloat(estimatedQty) : null,
-      estimated_date: estimatedDate ? estimatedDate.toISOString().slice(0, 10) : null,
+      estimated_date: null,
       actual_quantity: actualQty ? parseFloat(actualQty) : null,
-      actual_date: actualDate ? actualDate.toISOString().slice(0, 10) : null,
+      actual_date: null,
     });
 
     setLoading(false);
@@ -81,20 +90,49 @@ export default function NuevoMaterialScreen() {
           />
         </View>
 
-        {/* Unidad + Costo */}
-        <View style={s.row}>
-          <View style={[s.field, { flex: 1 }]}>
-            <Text style={s.fieldLabel}>UNIDAD</Text>
-            <TextInput
-              style={s.input} value={unit} onChangeText={setUnit}
-              placeholder="kg, m², un." placeholderTextColor={colors.faint}
-              selectionColor={colors.arena} returnKeyType="next"
-            />
+        {/* Unidad */}
+        <View style={s.field}>
+          <Text style={s.fieldLabel}>UNIDAD</Text>
+          <View style={s.unitRow}>
+            {UNIT_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt}
+                style={[s.unitChip, !unitCustom && unit === opt && s.unitChipActive]}
+                onPress={() => { setUnit(opt); setUnitCustom(false); }}
+                activeOpacity={0.75}
+              >
+                <Text style={[s.unitChipText, !unitCustom && unit === opt && s.unitChipTextActive]}>{opt}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[s.unitChip, unitCustom && s.unitChipActive]}
+              onPress={() => { setUnitCustom(true); setUnit(''); }}
+              activeOpacity={0.75}
+            >
+              <Text style={[s.unitChipText, unitCustom && s.unitChipTextActive]}>Otro</Text>
+            </TouchableOpacity>
           </View>
-          <View style={[s.field, { flex: 1 }]}>
-            <Text style={s.fieldLabel}>COSTO UNITARIO</Text>
+          {!unitCustom && unit && UNIT_NAMES[unit] && (
+            <Text style={s.unitHint}>{unit} · {UNIT_NAMES[unit]}</Text>
+          )}
+          {unitCustom && (
             <TextInput
-              style={s.input} value={unitCost} onChangeText={setUnitCost}
+              style={[s.input, { marginTop: spacing.sm }]}
+              value={unit} onChangeText={setUnit}
+              placeholder="Ingresá la unidad" placeholderTextColor={colors.faint}
+              selectionColor={colors.arena} autoFocus returnKeyType="next"
+            />
+          )}
+        </View>
+
+        {/* Costo unitario */}
+        <View style={s.field}>
+          <Text style={s.fieldLabel}>COSTO UNITARIO</Text>
+          <View style={s.currencyRow}>
+            <Text style={s.currencySymbol}>$</Text>
+            <TextInput
+              style={[s.input, s.currencyInput]}
+              value={unitCost} onChangeText={setUnitCost}
               placeholder="0.00" placeholderTextColor={colors.faint}
               selectionColor={colors.arena} keyboardType="decimal-pad" returnKeyType="next"
             />
@@ -115,60 +153,60 @@ export default function NuevoMaterialScreen() {
         {rubros.length > 0 && (
           <View style={s.field}>
             <Text style={s.fieldLabel}>RUBRO <Text style={s.optional}>(opcional)</Text></Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.rubroRow}>
-              <TouchableOpacity
-                style={[s.rubroChip, rubroId === null && s.rubroChipActive]}
-                onPress={() => setRubroId(null)} activeOpacity={0.8}
-              >
-                <Text style={[s.rubroChipText, rubroId === null && s.rubroChipTextActive]}>General</Text>
-              </TouchableOpacity>
-              {rubros.map((r) => (
+            <View style={s.rubroContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.rubroRow}>
                 <TouchableOpacity
-                  key={r.id}
-                  style={[s.rubroChip, rubroId === r.id && s.rubroChipActive]}
-                  onPress={() => setRubroId(r.id)} activeOpacity={0.8}
+                  style={[s.rubroChip, rubroId === null && s.rubroChipActive]}
+                  onPress={() => setRubroId(null)} activeOpacity={0.8}
                 >
-                  <Text style={[s.rubroChipText, rubroId === r.id && s.rubroChipTextActive]} numberOfLines={1}>{r.name}</Text>
+                  <Text style={[s.rubroChipText, rubroId === null && s.rubroChipTextActive]}>General</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+                {rubros.map((r) => (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[s.rubroChip, rubroId === r.id && s.rubroChipActive]}
+                    onPress={() => setRubroId(r.id)} activeOpacity={0.8}
+                  >
+                    <Text style={[s.rubroChipText, rubroId === r.id && s.rubroChipTextActive]} numberOfLines={1}>{r.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <LinearGradient
+                colors={[`${colors.tinta}00`, colors.tinta]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={s.rubroFade}
+                pointerEvents="none"
+              />
+            </View>
           </View>
         )}
 
         {/* Estimado */}
         <View style={s.sectionDivider}>
           <Text style={s.sectionLabel}>ESTIMADO</Text>
+          <Text style={s.sectionOptional}>(opcional)</Text>
         </View>
-        <View style={s.row}>
-          <View style={[s.field, { flex: 1 }]}>
-            <Text style={s.fieldLabel}>CANTIDAD</Text>
-            <TextInput
-              style={s.input} value={estimatedQty} onChangeText={setEstimatedQty}
-              placeholder="0" placeholderTextColor={colors.faint}
-              selectionColor={colors.arena} keyboardType="decimal-pad"
-            />
-          </View>
-          <View style={[s.field, { flex: 1.4 }]}>
-            <DateField label="FECHA" value={estimatedDate} onChange={setEstimatedDate} placeholder="Sin fecha" />
-          </View>
+        <View style={s.field}>
+          <Text style={s.fieldLabel}>CANTIDAD</Text>
+          <TextInput
+            style={s.input} value={estimatedQty} onChangeText={setEstimatedQty}
+            placeholder="0" placeholderTextColor={colors.faint}
+            selectionColor={colors.arena} keyboardType="decimal-pad"
+          />
         </View>
 
         {/* Real */}
         <View style={s.sectionDivider}>
           <Text style={s.sectionLabel}>REAL</Text>
+          <Text style={s.sectionOptional}>(opcional)</Text>
         </View>
-        <View style={s.row}>
-          <View style={[s.field, { flex: 1 }]}>
-            <Text style={s.fieldLabel}>CANTIDAD</Text>
-            <TextInput
-              style={s.input} value={actualQty} onChangeText={setActualQty}
-              placeholder="0" placeholderTextColor={colors.faint}
-              selectionColor={colors.arena} keyboardType="decimal-pad"
-            />
-          </View>
-          <View style={[s.field, { flex: 1.4 }]}>
-            <DateField label="FECHA" value={actualDate} onChange={setActualDate} placeholder="Sin fecha" />
-          </View>
+        <View style={s.field}>
+          <Text style={s.fieldLabel}>CANTIDAD</Text>
+          <TextInput
+            style={s.input} value={actualQty} onChangeText={setActualQty}
+            placeholder="0" placeholderTextColor={colors.faint}
+            selectionColor={colors.arena} keyboardType="decimal-pad"
+          />
         </View>
 
         {error && <Text style={s.errorText}>{error}</Text>}
@@ -215,14 +253,31 @@ const s = StyleSheet.create({
 
   row: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.xl },
 
-  rubroRow: { flexDirection: 'row', gap: spacing.sm },
+  // Unit selector
+  unitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  unitChip: { height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.panel, alignItems: 'center', justifyContent: 'center' },
+  unitChipActive: { backgroundColor: colors.crema },
+  unitChipText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: colors.gris },
+  unitChipTextActive: { color: '#FFFFFF' },
+  unitHint: { fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 0.3, color: colors.gris, marginTop: spacing.sm },
+
+  // Currency input
+  currencyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  currencySymbol: { fontFamily: fonts.archivo.bold, fontSize: 18, color: colors.crema, paddingLeft: 4 },
+  currencyInput: { flex: 1 },
+
+  // Rubro
+  rubroContainer: { position: 'relative' },
+  rubroRow: { flexDirection: 'row', gap: spacing.sm, paddingRight: 40 },
+  rubroFade: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 40 },
   rubroChip: { height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.panel, alignItems: 'center', justifyContent: 'center', maxWidth: 160 },
   rubroChipActive: { backgroundColor: colors.crema },
   rubroChipText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: colors.gris },
   rubroChipTextActive: { color: '#FFFFFF' },
 
-  sectionDivider: { paddingHorizontal: spacing.xl, paddingTop: spacing.xs },
-  sectionLabel: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: colors.arena },
+  sectionDivider: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, paddingHorizontal: spacing.xl, paddingTop: spacing.xs },
+  sectionLabel: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', color: colors.gris },
+  sectionOptional: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 0.3, color: colors.faint },
 
   errorText: { paddingHorizontal: spacing.xl, fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.error },
 
