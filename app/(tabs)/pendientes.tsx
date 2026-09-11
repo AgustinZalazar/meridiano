@@ -33,10 +33,10 @@ const STATUS_LABEL: Record<PendingStatus, string> = {
   resuelto: 'Resuelto',
 };
 
-const STATUS_STYLE: Record<PendingStatus, { bg: string; color: string }> = {
-  pendiente: { bg: colors.chip, color: colors.crema },
-  en_revision: { bg: 'rgba(217,119,87,0.12)', color: colors.arena },
-  resuelto: { bg: 'rgba(74,124,89,0.12)', color: colors.success },
+const STATUS_COLOR: Record<PendingStatus, string> = {
+  pendiente:   colors.gris,
+  en_revision: colors.arena,
+  resuelto:    colors.success,
 };
 
 function formatItemDate(iso: string): string {
@@ -63,21 +63,19 @@ function SkeletonPendienteCard() {
   }, []);
   const opacity = shimmer.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.45, 1] });
   return (
-    <Animated.View style={[styles.card, { opacity }]}>
-      <View style={[styles.imageSlot, { backgroundColor: colors.chip }]} />
-      <View style={[styles.cardBody, { gap: 10 }]}>
-        <View style={{ height: 13, borderRadius: 7, backgroundColor: colors.chip, width: '70%' }} />
-        <View style={{ height: 11, borderRadius: 6, backgroundColor: colors.chip, width: '50%' }} />
-        <View style={{ height: 20, borderRadius: 10, backgroundColor: colors.chip, width: '35%' }} />
-      </View>
+    <Animated.View style={[styles.card, { opacity, gap: 10 }]}>
+      <View style={{ height: 10, borderRadius: 5, backgroundColor: colors.chip, width: '28%' }} />
+      <View style={{ height: 14, borderRadius: 7, backgroundColor: colors.chip, width: '85%' }} />
+      <View style={{ height: 14, borderRadius: 7, backgroundColor: colors.chip, width: '60%' }} />
+      <View style={{ height: 10, borderRadius: 5, backgroundColor: colors.chip, width: '45%' }} />
     </Animated.View>
   );
 }
 
 function PendienteCard({ item, onPress, index }: { item: DbPending; onPress: () => void; index: number }) {
-  const s = STATUS_STYLE[item.status];
+  const statusColor = STATUS_COLOR[item.status];
   const projectName = item.projects?.name ?? '—';
-  const rubroName = item.rubros?.name ?? '—';
+  const rubroName   = item.rubros?.name ?? null;
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -91,43 +89,40 @@ function PendienteCard({ item, onPress, index }: { item: DbPending; onPress: () 
     <Animated.View style={{
       opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
       transform: [
-        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
-        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
+        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] }) },
       ],
     }}>
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.imageSlot}>
-        <Feather
-          name={item.source === 'ai' ? 'cpu' : 'edit-3'}
-          size={20}
-          color={colors.faint}
-        />
-      </View>
-      <View style={styles.cardBody}>
-        <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
-        <View style={styles.cardMetaRow}>
-          <Text style={styles.cardMeta} numberOfLines={1}>{projectName} · {rubroName}</Text>
+      <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+        {/* Top row: status indicator + date */}
+        <View style={styles.cardTopRow}>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[styles.statusLabel, { color: statusColor }]}>
+              {STATUS_LABEL[item.status].toUpperCase()}
+            </Text>
+            {item.source === 'ai' && (
+              <Text style={styles.aiTag}>· IA</Text>
+            )}
+          </View>
           <Text style={styles.cardDate}>{formatItemDate(item.created_at)}</Text>
         </View>
+
+        {/* Description */}
+        <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
+
+        {/* Footer: meta + trade chip */}
         <View style={styles.cardFooter}>
+          <Text style={styles.cardMeta} numberOfLines={1}>
+            {projectName}{rubroName ? ` · ${rubroName}` : ''}
+          </Text>
           {item.trade ? (
             <View style={styles.tradeChip}>
               <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
             </View>
           ) : null}
-          <View style={[styles.statusChip, { backgroundColor: s.bg }]}>
-            <Text style={[styles.statusChipText, { color: s.color }]}>
-              {STATUS_LABEL[item.status]}
-            </Text>
-          </View>
-          <View style={styles.sourceChip}>
-            <Text style={styles.sourceChipText}>
-              {item.source === 'ai' ? 'IA' : 'Manual'}
-            </Text>
-          </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -302,34 +297,23 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: spacing.md + 4, paddingTop: spacing.xs, gap: 10 },
 
   card: {
-    flexDirection: 'row', gap: 14, backgroundColor: colors.panel, borderRadius: 20, padding: 14,
-    shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
+    backgroundColor: colors.panel, borderRadius: 16, padding: 16, gap: 9,
+    shadowColor: '#12151A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 2,
   },
-  imageSlot: {
-    width: 64, height: 64, borderRadius: 14, backgroundColor: colors.chip,
-    flexShrink: 0, alignItems: 'center', justifyContent: 'center',
-  },
-  cardBody: { flex: 1, gap: 5, justifyContent: 'center' },
-  cardDesc: { fontFamily: fonts.archivo.bold, fontSize: 13.5, color: colors.crema, lineHeight: 19 },
-  cardMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusLabel: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1.2 },
+  aiTag: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 0.5, color: colors.faint },
+  cardDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.gris, letterSpacing: 0.3 },
+  cardDesc: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, lineHeight: 20 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   cardMeta: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3, flex: 1 },
-  cardDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3, flexShrink: 0 },
-  cardFooter: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-
   tradeChip: {
-    height: 22, borderRadius: 11, paddingHorizontal: 8,
-    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+    height: 20, borderRadius: 10, paddingHorizontal: 8,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   tradeText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
-
-  statusChip: { height: 22, borderRadius: 11, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  statusChipText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3 },
-
-  sourceChip: {
-    height: 22, borderRadius: 11, paddingHorizontal: 8,
-    backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center',
-  },
-  sourceChipText: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 0.3, color: colors.faint },
 
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },

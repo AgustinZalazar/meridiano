@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/auth-context';
 import { onboardingKey } from './welcome';
+import { SplashAnimation } from '../components/SplashAnimation';
 
 function RootLayoutNav() {
   const { session, loading } = useAuth();
@@ -61,8 +62,15 @@ function RootLayoutNav() {
   );
 }
 
+// Wrapper lives inside AuthProvider so it can access useAuth
+function SplashWrapper({ onDone }: { onDone: () => void }) {
+  const { loading } = useAuth();
+  return <SplashAnimation isReady={!loading} onDone={onDone} />;
+}
+
 export default function RootLayout() {
   const [fontsReady, setFontsReady] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
     Font.loadAsync({
@@ -83,6 +91,7 @@ export default function RootLayout() {
     <AuthProvider>
       <StatusBar style="dark" />
       <RootLayoutNav />
+      {!splashDone && <SplashWrapper onDone={() => setSplashDone(true)} />}
     </AuthProvider>
   );
 }

@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, Alert, ScrollView, TextInput, Animated, Easing } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Image, ActivityIndicator, Alert, ScrollView, TextInput, Animated, Easing, Linking } from 'react-native';
 import { SlidingTabs } from '../../components/SlidingTabs';
 import { BottomSheet } from '../../components/BottomSheet';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -95,10 +95,10 @@ function formatStartDate(d: string | null): string {
   return 'Inicio ' + date.toLocaleDateString('es-AR', { month: '2-digit', year: 'numeric' });
 }
 
-const PENDING_STATUS_STYLE: Record<PendingStatus, { bg: string; color: string }> = {
-  pendiente:   { bg: colors.chip,                   color: colors.crema  },
-  en_revision: { bg: 'rgba(217,119,87,0.12)',       color: colors.arena  },
-  resuelto:    { bg: 'rgba(74,124,89,0.12)',         color: colors.success },
+const PENDING_STATUS_COLOR: Record<PendingStatus, string> = {
+  pendiente:   colors.gris,
+  en_revision: colors.arena,
+  resuelto:    colors.success,
 };
 
 const PENDING_STATUS_LABEL: Record<PendingStatus, string> = {
@@ -108,6 +108,25 @@ const PENDING_STATUS_LABEL: Record<PendingStatus, string> = {
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+function BadgeDot({ count }: { count: number }) {
+  const scale = useRef(new Animated.Value(0)).current;
+  const isFirst = useRef(true);
+
+  useEffect(() => {
+    scale.setValue(isFirst.current ? 0 : 0.6);
+    isFirst.current = false;
+    Animated.spring(scale, {
+      toValue: 1, friction: 4, tension: 200, useNativeDriver: true,
+    }).start();
+  }, [count]);
+
+  return (
+    <Animated.View style={[styles.badgeDot, { transform: [{ scale }] }]}>
+      <Text style={styles.badgeDotText}>{count}</Text>
+    </Animated.View>
+  );
+}
 
 function SkeletonRubroCard() {
   const shimmer = useRef(new Animated.Value(0)).current;
@@ -207,7 +226,7 @@ function RubroCard({ rubro, pendientes, index, onEdit, onGrabacion, onInformeDia
 }
 
 function PendienteCard({ item, rubroName, index, onPress }: { item: DbPendingItem; rubroName: string; index: number; onPress: () => void }) {
-  const s = PENDING_STATUS_STYLE[item.status];
+  const statusColor = PENDING_STATUS_COLOR[item.status];
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.sequence([
@@ -225,23 +244,26 @@ function PendienteCard({ item, rubroName, index, onPress }: { item: DbPendingIte
       ],
     }}>
     <TouchableOpacity style={styles.pendCard} onPress={onPress} activeOpacity={0.85}>
-      <View style={styles.pendImageSlot}>
-        <Feather name={item.reports ? 'cpu' : 'edit-3'} size={18} color={colors.faint} />
-      </View>
-      <View style={styles.pendBody}>
-        <Text style={styles.pendDesc} numberOfLines={2}>{item.description}</Text>
-        <Text style={styles.pendObra}>{rubroName}</Text>
-        <View style={styles.pendFooter}>
-          {item.trade ? (
-            <View style={styles.tradeChip}>
-              <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
-            </View>
-          ) : null}
-          <View style={[styles.statusChip, { backgroundColor: s.bg }]}>
-            <Text style={[styles.statusChipText, { color: s.color }]}>{PENDING_STATUS_LABEL[item.status]}</Text>
-          </View>
-          <Text style={styles.pendDate}>{formatItemDate(item.created_at)}</Text>
+      {/* Top row: status dot + label + date */}
+      <View style={styles.pendTopRow}>
+        <View style={styles.pendStatusRow}>
+          <View style={[styles.pendStatusDot, { backgroundColor: statusColor }]} />
+          <Text style={[styles.pendStatusLabel, { color: statusColor }]}>
+            {PENDING_STATUS_LABEL[item.status].toUpperCase()}
+          </Text>
         </View>
+        <Text style={styles.pendDate}>{formatItemDate(item.created_at)}</Text>
+      </View>
+      {/* Description */}
+      <Text style={styles.pendDesc} numberOfLines={2}>{item.description}</Text>
+      {/* Footer: rubro + trade chip */}
+      <View style={styles.pendCardFooter}>
+        <Text style={styles.pendObra} numberOfLines={1}>{rubroName}</Text>
+        {item.trade ? (
+          <View style={styles.tradeChip}>
+            <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
+          </View>
+        ) : null}
       </View>
     </TouchableOpacity>
     </Animated.View>
@@ -272,6 +294,7 @@ export default function ProyectoScreen() {
   const [projectStatus, setProjectStatus] = useState<ProjectStatus | null>(null);
   const [statusSheetVisible, setStatusSheetVisible] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [openingPlanoId, setOpeningPlanoId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -353,6 +376,21 @@ export default function ProyectoScreen() {
       Alert.alert('Error', e.message ?? 'No se pudo subir el plano.');
     } finally {
       setUploadingPlano(false);
+    }
+  }
+
+  async function handleOpenPlano(item: DbPlano) {
+    setOpeningPlanoId(item.id);
+    try {
+      const { data, error } = await supabase.storage
+        .from('planos')
+        .createSignedUrl(item.storage_path, 3600);
+      if (error || !data?.signedUrl) throw new Error('No se pudo obtener el enlace');
+      await Linking.openURL(data.signedUrl);
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'No se pudo abrir el plano.');
+    } finally {
+      setOpeningPlanoId(null);
     }
   }
 
@@ -599,28 +637,37 @@ export default function ProyectoScreen() {
         <FlatList
           data={planos}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.planoRow}>
-              <View style={styles.planoIconSlot}>
-                <Feather
-                  name={item.storage_path.match(/\.(jpg|jpeg|png|webp)$/i) ? 'image' : 'file-text'}
-                  size={18}
-                  color={colors.gris}
-                />
-              </View>
-              <View style={styles.planoInfo}>
-                <Text style={styles.planoName}>{item.name}</Text>
-                <View style={styles.planoMeta}>
-                  <View style={styles.planoTypeBadge}>
-                    <Text style={styles.planoTypeText}>{item.type}</Text>
+          renderItem={({ item }) => {
+            const isImg = /\.(jpg|jpeg|png|webp)$/i.test(item.storage_path);
+            return (
+              <TouchableOpacity
+                style={styles.planoRow}
+                onPress={() => handleOpenPlano(item)}
+                activeOpacity={0.85}
+                disabled={openingPlanoId === item.id}
+              >
+                {/* Name - primary element */}
+                <Text style={styles.planoName}>
+                  {item.name.charAt(0).toUpperCase() + item.name.slice(1)}
+                </Text>
+                {/* Footer: type badge + format tag + date + loader */}
+                <View style={styles.planoTopRow}>
+                  <View style={styles.planoTagsRow}>
+                    <View style={styles.planoTypeBadge}>
+                      <Text style={styles.planoTypeText}>{item.type}</Text>
+                    </View>
+                    <Text style={styles.planoFormatTag}>{isImg ? 'IMG' : 'PDF'}</Text>
                   </View>
-                  <Text style={styles.planoDate}>
-                    {new Date(item.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}
-                  </Text>
+                  {openingPlanoId === item.id
+                    ? <ActivityIndicator size="small" color={colors.arena} />
+                    : <Text style={styles.planoDate}>
+                        {new Date(item.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }).replace('.', '').toUpperCase()}
+                      </Text>
+                  }
                 </View>
-              </View>
-            </View>
-          )}
+              </TouchableOpacity>
+            );
+          }}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
@@ -674,11 +721,7 @@ export default function ProyectoScreen() {
                   size={20}
                   color={active ? '#FFFFFF' : isNav ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.35)'}
                 />
-                {badge ? (
-                  <View style={styles.badgeDot}>
-                    <Text style={styles.badgeDotText}>{badge}</Text>
-                  </View>
-                ) : null}
+                {badge ? <BadgeDot count={badge} /> : null}
               </View>
               <Text style={[styles.bottomBarLabel, active && styles.bottomBarLabelActive, isNav && styles.bottomBarLabelNav]}>
                 {t.label}
@@ -875,23 +918,19 @@ const styles = StyleSheet.create({
   addBtnText: { fontFamily: fonts.archivo.bold, fontSize: 14.5, color: colors.crema },
 
   planoRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: colors.panel, borderRadius: 18, padding: 14,
+    backgroundColor: colors.panel, borderRadius: 16, padding: 16, gap: 9,
     shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 2,
   },
-  planoIconSlot: {
-    width: 44, height: 44, borderRadius: 12, backgroundColor: colors.chip,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  planoInfo: { flex: 1, gap: 5 },
-  planoName: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema },
-  planoMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  planoTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  planoTagsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  planoName: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, lineHeight: 20 },
   planoTypeBadge: {
     height: 18, paddingHorizontal: 7, borderRadius: 9, backgroundColor: colors.chip,
     alignItems: 'center', justifyContent: 'center',
   },
   planoTypeText: { fontFamily: fonts.mono.regular, fontSize: 8, letterSpacing: 0.4, color: colors.gris },
-  planoDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3 },
+  planoFormatTag: { fontFamily: fonts.mono.regular, fontSize: 8, letterSpacing: 0.8, color: colors.gris },
+  planoDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.gris, letterSpacing: 0.3 },
 
   sheet: {
     backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
@@ -923,25 +962,22 @@ const styles = StyleSheet.create({
   sheetBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
 
   pendCard: {
-    flexDirection: 'row', gap: 12, backgroundColor: colors.panel, borderRadius: 18, padding: 13,
+    backgroundColor: colors.panel, borderRadius: 16, padding: 16, gap: 9,
     shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 2,
   },
-  pendImageSlot: {
-    width: 60, height: 60, borderRadius: 12, backgroundColor: colors.chip,
-    flexShrink: 0, alignItems: 'center', justifyContent: 'center',
-  },
-  pendBody: { flex: 1, gap: 4, justifyContent: 'center' },
-  pendDesc: { fontFamily: fonts.archivo.bold, fontSize: 13, color: colors.crema, lineHeight: 18 },
-  pendObra: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3 },
-  pendFooter: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  pendTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pendStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pendStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  pendStatusLabel: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1.2 },
+  pendDesc: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, lineHeight: 20 },
+  pendObra: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3, flex: 1 },
+  pendCardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   tradeChip: {
-    height: 20, borderRadius: 10, paddingHorizontal: 7,
-    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+    height: 20, borderRadius: 10, paddingHorizontal: 8,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   tradeText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
-  statusChip: { height: 20, borderRadius: 10, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
-  statusChipText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3 },
-  pendDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3, marginLeft: 'auto' },
+  pendDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.gris, letterSpacing: 0.3 },
 
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
