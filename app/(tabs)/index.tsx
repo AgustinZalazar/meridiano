@@ -1,5 +1,26 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator, TextInput, Animated, Easing } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator, TextInput, Animated, Easing, Dimensions } from 'react-native';
+
+const { width: SW, height: SH } = Dimensions.get('window');
+const GRID_STEP = 48;
+
+const H_LINES: number[] = [];
+const V_LINES: number[] = [];
+for (let y = GRID_STEP; y < SH; y += GRID_STEP) H_LINES.push(y);
+for (let x = GRID_STEP; x < SW; x += GRID_STEP) V_LINES.push(x);
+
+function GridBackground() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {H_LINES.map((y) => (
+        <View key={`h${y}`} style={{ position: 'absolute', left: 0, right: 0, top: y, height: StyleSheet.hairlineWidth, backgroundColor: colors.crema, opacity: 0.07 }} />
+      ))}
+      {V_LINES.map((x) => (
+        <View key={`v${x}`} style={{ position: 'absolute', top: 0, bottom: 0, left: x, width: StyleSheet.hairlineWidth, backgroundColor: colors.crema, opacity: 0.07 }} />
+      ))}
+    </View>
+  );
+}
 import { SlidingTabs } from '../../components/SlidingTabs';
 
 const LOGO_SRC = require('../../assets/icon.png');
@@ -189,6 +210,7 @@ export default function ProyectosScreen() {
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>
+      <GridBackground />
       <View style={styles.topBar}>
         {searchVisible ? (
           <SearchBarFade>
