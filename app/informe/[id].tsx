@@ -180,7 +180,6 @@ export default function InformeScreen() {
     const rubroStr = escHtml([report.rubros?.code, report.rubros?.name].filter(Boolean).join(' · ') || '—');
     const studioName = escHtml(studio?.name ?? '');
     const logoUrl = studio?.logo_url?.startsWith('https://') ? studio.logo_url : '';
-    const projectImageUrl = report.projects?.image_url?.startsWith('https://') ? report.projects.image_url : '';
     const projectLogoUrl = report.projects?.logo_url?.startsWith('https://') ? report.projects.logo_url : '';
     const fotoAnnotatedUrl = fotoBase64
       ? `data:image/png;base64,${fotoBase64}`
@@ -234,8 +233,7 @@ export default function InformeScreen() {
   td:first-child { width: 130px; font-weight: 700; font-size: 10px; color: #555; white-space: nowrap; }
   td.status { width: 90px; font-size: 10px; text-transform: capitalize; color: #888; white-space: nowrap; }
   .note { margin-top: 20px; padding: 12px 16px; border-left: 3px solid #D97757; background: #FFFBF8; font-style: italic; color: #555; }
-  .project-hero { width: 100%; max-height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 16px; display: block; }
-  .foto-section { margin-top: 24px; margin-bottom: 8px; }
+.foto-section { margin-top: 24px; margin-bottom: 8px; }
   .foto-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px; color: #888; margin-bottom: 8px; font-weight: 700; }
   .foto-img { width: 100%; max-height: 320px; object-fit: contain; border-radius: 8px; display: block; border: 1px solid #EEE; }
   .project-title-row { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
@@ -266,7 +264,6 @@ export default function InformeScreen() {
     </div>
   </div>
 
-  ${projectImageUrl ? `<img class="project-hero" src="${projectImageUrl}" />` : ''}
   <div class="project-title-row">
     ${projectLogoUrl ? `<img class="project-logo" src="${projectLogoUrl}" />` : ''}
     <div class="title">${isOf ? 'Observación Oficina Técnica' : 'Informe de Contratistas'}</div>
