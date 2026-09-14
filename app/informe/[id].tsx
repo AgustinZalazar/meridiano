@@ -10,6 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { useStudio } from '../../lib/use-studio';
 import { supabase } from '../../lib/supabase';
@@ -36,14 +37,7 @@ interface PendingItem {
   trade: string | null;
   status: string;
   source: string;
-}
-
-interface ReportFrame {
-  id: string;
-  storage_path: string;
-  timestamp_sec: number;
-  order_index: number;
-  signedUrl?: string;
+  image_path: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -76,7 +70,13 @@ function Chip({ label }: { label: string }) {
   );
 }
 
-function ItemCard({ item }: { item: PendingItem }) {
+function ItemCard({ item, imageUri, uploading, onPickImage, onImagePress }: {
+  item: PendingItem;
+  imageUri?: string;
+  uploading: boolean;
+  onPickImage: () => void;
+  onImagePress: (uri: string) => void;
+}) {
   return (
     <View style={styles.itemCard}>
       <View style={styles.itemDot} />
@@ -87,12 +87,40 @@ function ItemCard({ item }: { item: PendingItem }) {
             <Chip label={item.trade} />
           </View>
         )}
+        {imageUri ? (
+          <View style={styles.itemImageWrap}>
+            <TouchableOpacity activeOpacity={0.9} onPress={() => onImagePress(imageUri)}>
+              <Image source={{ uri: imageUri }} style={styles.itemImage} resizeMode="cover" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.itemReplaceBtn} onPress={onPickImage} activeOpacity={0.8} disabled={uploading}>
+              {uploading
+                ? <ActivityIndicator size="small" color={colors.gris} />
+                : <><Feather name="refresh-cw" size={10} color={colors.gris} /><Text style={styles.itemReplaceBtnText}>Reemplazar</Text></>
+              }
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.itemAddImageBtn} onPress={onPickImage} activeOpacity={0.8} disabled={uploading}>
+            {uploading
+              ? <ActivityIndicator size="small" color={colors.gris} />
+              : <><Feather name="camera" size={12} color={colors.gris} /><Text style={styles.itemAddImageText}>Agregar foto</Text></>
+            }
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
 }
 
-function TradeGroup({ trade, items, index }: { trade: string; items: PendingItem[]; index: number }) {
+function TradeGroup({ trade, items, index, itemImages, uploadingId, onPickImage, onImagePress }: {
+  trade: string;
+  items: PendingItem[];
+  index: number;
+  itemImages: Record<string, string>;
+  uploadingId: string | null;
+  onPickImage: (itemId: string) => void;
+  onImagePress: (uri: string) => void;
+}) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.sequence([
@@ -115,7 +143,14 @@ function TradeGroup({ trade, items, index }: { trade: string; items: PendingItem
         <Text style={styles.sectorCount}>{items.length}</Text>
       </View>
       {items.map((item) => (
-        <ItemCard key={item.id} item={item} />
+        <ItemCard
+          key={item.id}
+          item={item}
+          imageUri={itemImages[item.id]}
+          uploading={uploadingId === item.id}
+          onPickImage={() => onPickImage(item.id)}
+          onImagePress={onImagePress}
+        />
       ))}
     </View>
     </Animated.View>
@@ -131,7 +166,6 @@ export default function InformeScreen() {
 
   const [report, setReport] = useState<Report | null>(null);
   const [items, setItems] = useState<PendingItem[]>([]);
-  const [frames, setFrames] = useState<ReportFrame[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -142,6 +176,8 @@ export default function InformeScreen() {
   const [editingItem, setEditingItem] = useState<{ id: string; description: string } | null>(null);
   const [editText, setEditText] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [itemImages, setItemImages] = useState<Record<string, string>>({});
+  const [uploadingImageId, setUploadingImageId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id || id === 'demo') { setLoading(false); return; }
@@ -150,29 +186,80 @@ export default function InformeScreen() {
 
   async function fetchReport() {
     setLoading(true);
-    const [reportRes, itemsRes, framesRes] = await Promise.all([
+    const [reportRes, itemsRes] = await Promise.all([
       supabase.from('reports').select('id, type, mode, note, transcription, ai_summary, foto_url, status, created_at, projects(name, image_url, logo_url), rubros(name, code)').eq('id', id).single<Report>(),
-      supabase.from('pending_items').select('id, description, trade, status, source').eq('report_id', id).order('created_at'),
-      supabase.from('report_frames').select('id, storage_path, timestamp_sec, order_index').eq('report_id', id).order('order_index').limit(6),
+      supabase.from('pending_items').select('id, description, trade, status, source, image_path').eq('report_id', id).order('created_at'),
     ]);
 
     if (reportRes.data) setReport(reportRes.data);
-    if (itemsRes.data) setItems(itemsRes.data);
 
-    if (framesRes.data?.length) {
-      const withUrls = await Promise.all(
-        framesRes.data.map(async (f) => {
-          const { data } = await supabase.storage.from('report-frames').createSignedUrl(f.storage_path, 3600);
-          return { ...f, signedUrl: data?.signedUrl };
-        })
+    if (itemsRes.data) {
+      setItems(itemsRes.data as PendingItem[]);
+      // Build signed URLs for existing item images
+      const imageMap: Record<string, string> = {};
+      await Promise.all(
+        (itemsRes.data as PendingItem[])
+          .filter((item) => item.image_path)
+          .map(async (item) => {
+            const { data } = await supabase.storage
+              .from('item-images')
+              .createSignedUrl(item.image_path!, 3600);
+            if (data?.signedUrl) imageMap[item.id] = data.signedUrl;
+          })
       );
-      setFrames(withUrls);
+      setItemImages(imageMap);
     }
 
     setLoading(false);
   }
 
-  function buildHtml(fotoBase64?: string | null): string {
+  async function handlePickItemImage(itemId: string) {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galería para agregar fotos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: false,
+    });
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+    setUploadingImageId(itemId);
+    try {
+      const ext = asset.uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+      const storagePath = `${id}/${itemId}_${Date.now()}.${ext}`;
+
+      const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 });
+      const chars = atob(base64);
+      const bytes = new Uint8Array(chars.length);
+      for (let i = 0; i < chars.length; i++) bytes[i] = chars.charCodeAt(i);
+
+      const { error: uploadErr } = await supabase.storage
+        .from('item-images')
+        .upload(storagePath, bytes.buffer, { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, upsert: true });
+      if (uploadErr) throw new Error(uploadErr.message);
+
+      await supabase.from('pending_items').update({ image_path: storagePath }).eq('id', itemId);
+
+      const { data: signedData } = await supabase.storage
+        .from('item-images')
+        .createSignedUrl(storagePath, 3600);
+
+      if (signedData?.signedUrl) {
+        setItemImages((prev) => ({ ...prev, [itemId]: signedData.signedUrl }));
+        setItems((prev) => prev.map((item) => item.id === itemId ? { ...item, image_path: storagePath } : item));
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'No se pudo subir la imagen.');
+    } finally {
+      setUploadingImageId(null);
+    }
+  }
+
+  function buildHtml(fotoBase64?: string | null, itemImagesBase64?: Record<string, string>): string {
     if (!report) return '';
     const isOf = report.type === 'oficina';
     const dateStr = formatDate(report.created_at);
@@ -185,25 +272,21 @@ export default function InformeScreen() {
       ? `data:image/png;base64,${fotoBase64}`
       : (report.foto_url?.startsWith('https://') ? report.foto_url : '');
 
-    const framesWithUrl = frames.filter((f) => f.signedUrl);
-    const framesHtml = framesWithUrl.length > 0 ? `
-  <div class="frames-section">
-    <div class="frames-label">CAPTURAS DEL VIDEO</div>
-    <div class="frames-grid">
-      ${framesWithUrl.map((f) => {
-        const mins = Math.floor(f.timestamp_sec / 60);
-        const secs = String(f.timestamp_sec % 60).padStart(2, '0');
-        return `<div class="frame-item"><img class="frame-img" src="${f.signedUrl}" /><div class="frame-ts">${mins}:${secs}</div></div>`;
-      }).join('')}
+    const itemCards = items.map((item) => {
+      const imgBase64 = itemImagesBase64?.[item.id];
+      const imgHtml = imgBase64
+        ? `<img class="item-img" src="data:image/jpeg;base64,${imgBase64}" />`
+        : '';
+      return `
+  <div class="item-card">
+    <div class="item-meta">
+      <span class="item-trade">${escHtml(item.trade ?? 'General')}</span>
+      <span class="item-status">${escHtml(item.status)}</span>
     </div>
-  </div>` : '';
-
-    const itemRows = items.map((item) => `
-      <tr>
-        <td>${escHtml(item.trade ?? '—')}</td>
-        <td>${escHtml(item.description)}</td>
-        <td class="status">${escHtml(item.status)}</td>
-      </tr>`).join('');
+    <div class="item-desc">${escHtml(item.description)}</div>
+    ${imgHtml}
+  </div>`;
+    }).join('');
 
     return `<!DOCTYPE html>
 <html lang="es">
@@ -225,26 +308,20 @@ export default function InformeScreen() {
   .summary-value { font-size: 13px; font-weight: 700; color: #12151A; }
   .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 20px;
     background: ${isOf ? 'rgba(91,127,212,0.12)' : 'rgba(217,119,87,0.12)'}; color: ${isOf ? '#3A5FB0' : '#C05A30'}; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  thead th { background: #12151A; color: #fff; padding: 10px 12px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; }
-  tbody tr { border-bottom: 1px solid #eee; }
-  tbody tr:nth-child(even) { background: #FAFAFA; }
-  td { padding: 10px 12px; vertical-align: top; line-height: 1.5; }
-  td:first-child { width: 130px; font-weight: 700; font-size: 10px; color: #555; white-space: nowrap; }
-  td.status { width: 90px; font-size: 10px; text-transform: capitalize; color: #888; white-space: nowrap; }
-  .note { margin-top: 20px; padding: 12px 16px; border-left: 3px solid #D97757; background: #FFFBF8; font-style: italic; color: #555; }
-.foto-section { margin-top: 24px; margin-bottom: 8px; }
+  .note { margin-bottom: 20px; padding: 12px 16px; border-left: 3px solid #D97757; background: #FFFBF8; font-style: italic; color: #555; }
+  .foto-section { margin-bottom: 24px; }
   .foto-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px; color: #888; margin-bottom: 8px; font-weight: 700; }
   .foto-img { width: 100%; max-height: 320px; object-fit: contain; border-radius: 8px; display: block; border: 1px solid #EEE; }
   .project-title-row { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
   .project-logo { width: 48px; height: 48px; border-radius: 10px; object-fit: contain; background: #F7F4EE; flex-shrink: 0; }
   .title { font-size: 22px; font-weight: 700; color: #12151A; letter-spacing: -0.5px; }
-  .frames-section { margin-top: 28px; }
-  .frames-label { font-size: 9px; text-transform: uppercase; letter-spacing: 1.2px; color: #888; margin-bottom: 10px; font-weight: 700; }
-  .frames-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-  .frame-item { position: relative; }
-  .frame-img { width: 152px; height: 114px; object-fit: cover; border-radius: 6px; display: block; }
-  .frame-ts { position: absolute; bottom: 5px; right: 5px; background: rgba(0,0,0,0.6); color: #fff; font-size: 8px; padding: 2px 5px; border-radius: 4px; }
+  .items-section { margin-top: 8px; display: flex; flex-direction: column; gap: 12px; }
+  .item-card { border: 1px solid #EDEBE6; border-radius: 8px; padding: 12px 14px; break-inside: avoid; }
+  .item-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .item-trade { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #888; }
+  .item-status { font-size: 9px; text-transform: capitalize; color: #AAA; }
+  .item-desc { font-size: 12px; color: #12151A; line-height: 1.55; }
+  .item-img { width: 100%; max-height: 240px; object-fit: cover; border-radius: 6px; margin-top: 10px; display: block; border: 1px solid #EEE; }
   .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #eee; font-size: 9px; color: #aaa; text-align: center; letter-spacing: 0.5px; text-transform: uppercase; }
 </style>
 </head>
@@ -298,14 +375,9 @@ export default function InformeScreen() {
     <img class="foto-img" src="${fotoAnnotatedUrl}" />
   </div>` : ''}
 
-  <table>
-    <thead>
-      <tr><th>Especialidad</th><th>Descripción</th><th>Estado</th></tr>
-    </thead>
-    <tbody>${itemRows}</tbody>
-  </table>
-
-  ${framesHtml}
+  <div class="items-section">
+    ${itemCards}
+  </div>
 
   <div class="footer">Generado por MERIDIANO · Análisis por GPT-4o · ${dateStr}</div>
 </body>
@@ -316,6 +388,7 @@ export default function InformeScreen() {
     if (!report) return;
     setExporting(true);
     try {
+      // Download foto anotada
       let fotoBase64: string | null = null;
       if (report.foto_url?.startsWith('https://')) {
         try {
@@ -324,9 +397,24 @@ export default function InformeScreen() {
           if (dl.status === 200) {
             fotoBase64 = await FileSystem.readAsStringAsync(dl.uri, { encoding: FileSystem.EncodingType.Base64 });
           }
-        } catch { /* skip — fallback to URL */ }
+        } catch { /* skip */ }
       }
-      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64), base64: false });
+
+      // Download item images as base64
+      const itemImagesBase64: Record<string, string> = {};
+      await Promise.all(
+        Object.entries(itemImages).map(async ([itemId, uri]) => {
+          try {
+            const tmpPath = `${FileSystem.cacheDirectory}item_img_${itemId}_${Date.now()}.jpg`;
+            const dl = await FileSystem.downloadAsync(uri, tmpPath);
+            if (dl.status === 200) {
+              itemImagesBase64[itemId] = await FileSystem.readAsStringAsync(dl.uri, { encoding: FileSystem.EncodingType.Base64 });
+            }
+          } catch { /* skip */ }
+        })
+      );
+
+      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64, itemImagesBase64), base64: false });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Exportar informe' });
     } catch {
       Alert.alert('Error', 'No se pudo generar el PDF.');
@@ -448,27 +536,12 @@ export default function InformeScreen() {
           <View style={styles.fotoBlock}>
             <Text style={styles.fotoLabel}>FOTO CON INDICACIONES</Text>
             <TouchableOpacity activeOpacity={0.9} onPress={() => setLightboxUri(report.foto_url!)}>
-            <Image source={{ uri: report.foto_url }} style={styles.fotoImage} resizeMode="contain" />
-          </TouchableOpacity>
+              <Image source={{ uri: report.foto_url }} style={styles.fotoImage} resizeMode="contain" />
+            </TouchableOpacity>
           </View>
         )}
 
-        {/* Frames strip */}
-        {frames.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.framesStrip}>
-            {frames.map((f) => (
-              <View key={f.id} style={styles.frameThumb}>
-                {f.signedUrl
-                  ? <Image source={{ uri: f.signedUrl }} style={styles.frameImage} resizeMode="cover" />
-                  : <Feather name="image" size={16} color={colors.faint} />
-                }
-                <Text style={styles.frameTimestamp}>{Math.floor(f.timestamp_sec / 60)}:{String(f.timestamp_sec % 60).padStart(2, '0')}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Pending items grouped by trade */}
+        {/* Pending items grouped by trade — each with its own image */}
         {groups.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="check-circle" size={28} color={colors.faint} />
@@ -478,7 +551,16 @@ export default function InformeScreen() {
           </View>
         ) : (
           groups.map((g, i) => (
-            <TradeGroup key={g.trade} trade={g.trade} items={g.items} index={i} />
+            <TradeGroup
+              key={g.trade}
+              trade={g.trade}
+              items={g.items}
+              index={i}
+              itemImages={itemImages}
+              uploadingId={uploadingImageId}
+              onPickImage={handlePickItemImage}
+              onImagePress={setLightboxUri}
+            />
           ))
         )}
 
@@ -525,7 +607,6 @@ export default function InformeScreen() {
           </View>
 
           <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewScrollContent} showsVerticalScrollIndicator={false}>
-            {/* White page simulation */}
             <View style={styles.pdfPage}>
               {/* PDF header */}
               <View style={styles.pdfPageHeader}>
@@ -598,54 +679,67 @@ export default function InformeScreen() {
                 </View>
               )}
 
-              {/* Frames strip */}
-              {frames.length > 0 && (
-                <View style={styles.pdfFramesSection}>
-                  <Text style={styles.pdfFotoLabel}>CAPTURAS DEL VIDEO</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                    {frames.map((f) => (
-                      <TouchableOpacity key={f.id} activeOpacity={0.85} onPress={() => f.signedUrl && setLightboxUri(f.signedUrl)}>
-                        <View style={styles.pdfFrameThumb}>
-                          {f.signedUrl && <Image source={{ uri: f.signedUrl }} style={styles.pdfFrameImg} resizeMode="cover" />}
-                          <Text style={styles.frameTimestamp}>
-                            {Math.floor(f.timestamp_sec / 60)}:{String(f.timestamp_sec % 60).padStart(2, '0')}
-                          </Text>
+              {/* Items — each with image below */}
+              <View style={styles.pdfItemsSection}>
+                {items.map((item, i) => (
+                  <View key={item.id}>
+                    {/* Row — tap to edit */}
+                    <TouchableOpacity
+                      style={[styles.pdfItemRow, i % 2 === 1 && styles.pdfItemRowAlt]}
+                      onPress={() => { setEditingItem({ id: item.id, description: item.description }); setEditText(item.description); }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.pdfItemTop}>
+                        <Text style={styles.pdfTdTrade}>{item.trade ?? '—'}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={styles.pdfTdStatus}>{item.status}</Text>
+                          <Feather name="edit-2" size={8} color="#CCC" />
                         </View>
+                      </View>
+                      <Text style={styles.pdfTdDesc}>{item.description}</Text>
+                    </TouchableOpacity>
+
+                    {/* Image below the row */}
+                    {itemImages[item.id] ? (
+                      <TouchableOpacity
+                        style={styles.pdfItemImageWrap}
+                        activeOpacity={0.9}
+                        onPress={() => setLightboxUri(itemImages[item.id])}
+                      >
+                        <Image source={{ uri: itemImages[item.id] }} style={styles.pdfItemImage} resizeMode="cover" />
+                        <TouchableOpacity
+                          style={styles.pdfItemReplaceBtn}
+                          onPress={() => handlePickItemImage(item.id)}
+                          activeOpacity={0.8}
+                          disabled={uploadingImageId === item.id}
+                        >
+                          {uploadingImageId === item.id
+                            ? <ActivityIndicator size="small" color={colors.gris} />
+                            : <><Feather name="refresh-cw" size={10} color={colors.gris} /><Text style={styles.itemReplaceBtnText}>Reemplazar</Text></>
+                          }
+                        </TouchableOpacity>
                       </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-
-              {/* Table header */}
-              <View style={styles.pdfTableHeader}>
-                <Text style={[styles.pdfThText, { width: 88 }]}>ESPECIALIDAD</Text>
-                <Text style={[styles.pdfThText, { flex: 1 }]}>DESCRIPCIÓN</Text>
-                <Text style={[styles.pdfThText, { width: 72 }]}>ESTADO</Text>
-              </View>
-
-              {/* Table rows — tap to edit */}
-              {items.map((item, i) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.pdfTableRow, i % 2 === 1 && styles.pdfTableRowAlt]}
-                  onPress={() => { setEditingItem({ id: item.id, description: item.description }); setEditText(item.description); }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.pdfTdTrade, { width: 88 }]} numberOfLines={2}>{item.trade ?? '—'}</Text>
-                  <Text style={[styles.pdfTdDesc, { flex: 1 }]}>{item.description}</Text>
-                  <View style={{ width: 72, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                    <Text style={styles.pdfTdStatus} numberOfLines={1}>{item.status}</Text>
-                    <Feather name="edit-2" size={8} color="#CCC" />
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.pdfItemAddBtn}
+                        onPress={() => handlePickItemImage(item.id)}
+                        activeOpacity={0.8}
+                        disabled={uploadingImageId === item.id}
+                      >
+                        {uploadingImageId === item.id
+                          ? <ActivityIndicator size="small" color={colors.gris} />
+                          : <><Feather name="camera" size={12} color={colors.gris} /><Text style={styles.itemAddImageText}>Agregar foto</Text></>
+                        }
+                      </TouchableOpacity>
+                    )}
                   </View>
-                </TouchableOpacity>
-              ))}
-
-              {items.length === 0 && (
-                <View style={styles.pdfEmptyRow}>
-                  <Text style={styles.pdfEmptyText}>Sin pendientes</Text>
-                </View>
-              )}
+                ))}
+                {items.length === 0 && (
+                  <View style={styles.pdfEmptyRow}>
+                    <Text style={styles.pdfEmptyText}>Sin pendientes</Text>
+                  </View>
+                )}
+              </View>
 
               {/* Footer */}
               <View style={styles.pdfFooterDivider} />
@@ -727,6 +821,7 @@ export default function InformeScreen() {
           </TouchableOpacity>
         </View>
       </BottomSheet>
+
       {/* ── Lightbox ──────────────────────────────────────────────── */}
       <Modal visible={!!lightboxUri} transparent animationType="fade" onRequestClose={() => setLightboxUri(null)}>
         <TouchableOpacity style={styles.lightboxBg} activeOpacity={1} onPress={() => setLightboxUri(null)}>
@@ -848,19 +943,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chip,
   },
 
-  framesStrip: { paddingHorizontal: spacing.xl, gap: 10 },
-  frameThumb: {
-    width: 100, height: 76, borderRadius: 12, backgroundColor: colors.chip,
-    overflow: 'hidden', alignItems: 'center', justifyContent: 'center',
-  },
-  frameImage: { width: '100%', height: '100%' },
-  frameTimestamp: {
-    position: 'absolute', bottom: 4, right: 6,
-    fontFamily: fonts.mono.regular, fontSize: 8, color: '#FFFFFF',
-    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1,
-    overflow: 'hidden',
-  },
-
   sectorBlock: { paddingHorizontal: spacing.xl, gap: 10 },
   sectorHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 2,
@@ -877,8 +959,23 @@ const styles = StyleSheet.create({
     width: 6, height: 6, borderRadius: 3, backgroundColor: colors.arena,
     marginTop: 6, flexShrink: 0,
   },
-  itemBody: { flex: 1 },
+  itemBody: { flex: 1, gap: 6 },
   itemDescription: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.crema, lineHeight: 19 },
+
+  itemImageWrap: { gap: 6 },
+  itemImage: { width: '100%', aspectRatio: 16 / 9, borderRadius: 10, backgroundColor: colors.chip },
+  itemReplaceBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    height: 26, paddingHorizontal: 10, borderRadius: 13,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.tinta,
+  },
+  itemReplaceBtnText: { fontFamily: fonts.archivo.bold, fontSize: 10, color: colors.gris },
+  itemAddImageBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    height: 26, paddingHorizontal: 10, borderRadius: 13,
+    borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed', backgroundColor: colors.tinta,
+  },
+  itemAddImageText: { fontFamily: fonts.archivo.bold, fontSize: 10, color: colors.gris },
 
   chip: {
     height: 22, borderRadius: 11, paddingHorizontal: 8,
@@ -957,13 +1054,34 @@ const styles = StyleSheet.create({
   pdfFotoLabel: { fontFamily: fonts.mono.regular, fontSize: 8, letterSpacing: 1, textTransform: 'uppercase', color: '#888', marginBottom: 8, fontWeight: '700' },
   pdfFotoImg: { width: '100%', aspectRatio: 4 / 3, borderRadius: 8, backgroundColor: '#F0EDE8' },
 
-  pdfTableHeader: { flexDirection: 'row', backgroundColor: '#12151A', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 6, marginBottom: 2 },
-  pdfThText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.5, color: '#FFFFFF', textTransform: 'uppercase' },
-  pdfTableRow: { flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F0EDE8' },
-  pdfTableRowAlt: { backgroundColor: '#FAFAFA' },
-  pdfTdTrade: { fontFamily: fonts.archivo.bold, fontSize: 9.5, color: '#555' },
-  pdfTdDesc: { fontFamily: fonts.archivo.semibold, fontSize: 11, color: '#12151A', lineHeight: 16, paddingHorizontal: 6 },
-  pdfTdStatus: { fontFamily: fonts.archivo.semibold, fontSize: 9.5, color: '#888', textTransform: 'capitalize' },
+  pdfTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 3 },
+  pdfProjectLogo: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#F0EDE8', flexShrink: 0 },
+
+  // Items list in preview
+  pdfItemsSection: { gap: 2, marginTop: 8 },
+  pdfItemRow: {
+    paddingHorizontal: 10, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#F0EDE8',
+  },
+  pdfItemRowAlt: { backgroundColor: '#FAFAFA' },
+  pdfItemTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  pdfTdTrade: { fontFamily: fonts.archivo.bold, fontSize: 9, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4 },
+  pdfTdStatus: { fontFamily: fonts.archivo.semibold, fontSize: 9, color: '#AAA', textTransform: 'capitalize' },
+  pdfTdDesc: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: '#12151A', lineHeight: 17 },
+
+  pdfItemImageWrap: { marginHorizontal: 10, marginBottom: 6, gap: 6 },
+  pdfItemImage: { width: '100%', aspectRatio: 16 / 9, borderRadius: 8, backgroundColor: '#F0EDE8' },
+  pdfItemReplaceBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    height: 24, paddingHorizontal: 10, borderRadius: 12,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.tinta,
+  },
+  pdfItemAddBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
+    height: 24, paddingHorizontal: 10, borderRadius: 12, marginHorizontal: 10, marginBottom: 6,
+    borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed',
+  },
+
   pdfEmptyRow: { paddingVertical: 20, alignItems: 'center' },
   pdfEmptyText: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: '#AAA' },
 
@@ -1020,15 +1138,4 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   lightboxImg: { width: '100%', height: '80%' },
-
-  // ── PDF preview extras ────────────────────────────────────────────
-  pdfTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 3 },
-  pdfProjectLogo: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#F0EDE8', flexShrink: 0 },
-  pdfFramesSection: { marginTop: 16, marginBottom: 8, gap: 8 },
-  pdfFrameThumb: {
-    width: 100, height: 76, borderRadius: 10,
-    backgroundColor: '#F0EDE8', overflow: 'hidden',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  pdfFrameImg: { width: '100%', height: '100%' },
 });
