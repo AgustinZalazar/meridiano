@@ -723,44 +723,17 @@ export default function ProyectoScreen() {
             <View style={styles.pendFiltersWrap}>
               <View style={styles.pendFilterTopRow}>
                 <Text style={styles.pendFilterCount}>{filteredPendientes.length} resultado{filteredPendientes.length !== 1 ? 's' : ''}</Text>
-                <TouchableOpacity
-                  style={[styles.pendFilterBtn, (pendStatusFilter !== 'active' || pendType !== 'contratistas') && styles.pendFilterBtnActive]}
-                  onPress={() => setPendFilterSheet(true)}
-                  activeOpacity={0.8}
-                >
-                  <Feather name="sliders" size={13} color={(pendStatusFilter !== 'active' || pendType !== 'contratistas') ? colors.arena : colors.gris} />
-                  <Text style={[styles.pendFilterBtnText, (pendStatusFilter !== 'active' || pendType !== 'contratistas') && styles.pendFilterBtnTextActive]}>Filtros</Text>
-                  {(pendStatusFilter !== 'active' || pendType !== 'contratistas') && <View style={styles.pendFilterDot} />}
-                </TouchableOpacity>
-              </View>
-              {rubros.length > 1 && (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.rubroFilterStrip}
-                  contentContainerStyle={styles.rubroFilterRow}
-                >
-                  <TouchableOpacity
-                    style={[styles.rubroChip, !pendRubroFilter && styles.rubroChipActive]}
-                    onPress={() => setPendRubroFilter(null)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.rubroChipText, !pendRubroFilter && styles.rubroChipTextActive]}>Todos</Text>
-                  </TouchableOpacity>
-                  {rubros.map((r) => (
-                    <TouchableOpacity
-                      key={r.id}
-                      style={[styles.rubroChip, pendRubroFilter === r.id && styles.rubroChipActive]}
-                      onPress={() => setPendRubroFilter(pendRubroFilter === r.id ? null : r.id)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.rubroChipText, pendRubroFilter === r.id && styles.rubroChipTextActive]} numberOfLines={1}>
-                        {r.name}
-                      </Text>
+                {(() => {
+                  const hasFilter = pendStatusFilter !== 'active' || pendType !== 'contratistas' || !!pendRubroFilter;
+                  return (
+                    <TouchableOpacity style={[styles.pendFilterBtn, hasFilter && styles.pendFilterBtnActive]} onPress={() => setPendFilterSheet(true)} activeOpacity={0.8}>
+                      <Feather name="sliders" size={13} color={hasFilter ? colors.arena : colors.gris} />
+                      <Text style={[styles.pendFilterBtnText, hasFilter && styles.pendFilterBtnTextActive]}>Filtros</Text>
+                      {hasFilter && <View style={styles.pendFilterDot} />}
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
+                  );
+                })()}
+              </View>
             </View>
           }
           ListEmptyComponent={
@@ -878,7 +851,7 @@ export default function ProyectoScreen() {
           <View style={styles.sheetTitleRow}>
             <Text style={styles.sheetTitle}>Filtros</Text>
             {(pendStatusFilter !== 'active' || pendType !== 'contratistas') && (
-              <TouchableOpacity onPress={() => { setPendStatusFilter('active'); setPendType('contratistas'); }} activeOpacity={0.7}>
+              <TouchableOpacity onPress={() => { setPendStatusFilter('active'); setPendType('contratistas'); setPendRubroFilter(null); }} activeOpacity={0.7}>
                 <Text style={styles.sheetReset}>Limpiar</Text>
               </TouchableOpacity>
             )}
@@ -899,6 +872,19 @@ export default function ProyectoScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          {rubros.length > 1 && (<>
+            <Text style={styles.sheetGroupLabel}>RUBRO</Text>
+            <View style={styles.chipRow}>
+              <TouchableOpacity style={[styles.filterChip, !pendRubroFilter && styles.filterChipActive]} onPress={() => setPendRubroFilter(null)} activeOpacity={0.8}>
+                <Text style={[styles.filterChipText, !pendRubroFilter && styles.filterChipTextActive]}>Todos</Text>
+              </TouchableOpacity>
+              {rubros.map((r) => (
+                <TouchableOpacity key={r.id} style={[styles.filterChip, pendRubroFilter === r.id && styles.filterChipActive]} onPress={() => setPendRubroFilter(pendRubroFilter === r.id ? null : r.id)} activeOpacity={0.8}>
+                  <Text style={[styles.filterChipText, pendRubroFilter === r.id && styles.filterChipTextActive]} numberOfLines={1}>{r.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>)}
           <TouchableOpacity style={styles.sheetApplyBtn} onPress={() => setPendFilterSheet(false)} activeOpacity={0.85}>
             <Text style={styles.sheetApplyText}>Ver {filteredPendientes.length} resultado{filteredPendientes.length !== 1 ? 's' : ''}</Text>
           </TouchableOpacity>
