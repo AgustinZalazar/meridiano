@@ -153,8 +153,8 @@ export async function processVideoReport(reportId: string): Promise<void> {
 
     // 6. Analyze with GPT-4o
     const typeCtx = report.type === 'contratistas'
-      ? 'Informe de contratistas: enfocate en ejecución, calidad, seguridad y trabajos faltantes.'
-      : 'Observación de oficina técnica: enfocate en desvíos de proyecto, documentación y aspectos técnicos.';
+      ? 'Informe de contratistas: registrá trabajos faltantes, errores de ejecución, incumplimientos de proyecto y aspectos de calidad/seguridad.'
+      : 'Observación de oficina técnica: registrá desvíos respecto al proyecto, errores de replanteo, discrepancias de medidas y aspectos técnicos.';
 
     const imageMessages = frameBase64.map((b64) => ({
       type: 'image_url' as const,
@@ -163,15 +163,25 @@ export async function processVideoReport(reportId: string): Promise<void> {
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
-      max_tokens: 2000,
-      temperature: 0.2,
+      max_tokens: 3000,
+      temperature: 0.1,
       messages: [
         {
           role: 'system',
           content: `Sos un inspector de obras especializado. ${typeCtx}
-Analizá las imágenes y la transcripción del recorrido. Generá una lista de hallazgos o pendientes.
+
+Analizá las imágenes y la transcripción del recorrido y generá una lista COMPLETA de hallazgos y pendientes.
+
+REGLAS:
+1. NO repitas el mismo problema: si aparece en múltiples imágenes, listalo una sola vez incluyendo todas las ubicaciones afectadas.
+2. Incluí siempre la ubicación exacta en la descripción: piso (P00, P01...), unidad (U01, U104...), sector (living, baño, dormitorio, etc.).
+3. Incluí medidas específicas cuando se mencionen (ej: "viga invertida 7cm", "abertura 3.83m en obra vs 4.83m en proyecto").
+4. Sé técnico y específico — evitá frases genéricas como "verificar terminaciones" sin detalle.
+5. Si algo aplica a múltiples unidades o a todo el edificio, hacelo explícito en la descripción (ej: "P00 a P03 unidades 02/102/202/302").
+6. El campo "trade" debe ser una especialidad constructiva: Mampostería, Hormigón, Estructura, Instalaciones sanitarias, Instalaciones eléctricas, Revestimientos, Carpintería, Impermeabilización, Tareas generales, u otra pertinente.
+
 Respondé ÚNICAMENTE con un JSON array (sin markdown):
-[{"description":"descripción clara y específica (máx 200 chars)","trade":"Especialidad o null"}]
+[{"description":"descripción con ubicación y detalle (máx 250 chars)","trade":"Especialidad"}]
 Si no hay pendientes, respondé: []`,
         },
         {
@@ -181,7 +191,7 @@ Si no hay pendientes, respondé: []`,
               type: 'text',
               text: [
                 report.note ? `Nota del inspector: "${report.note}"` : '',
-                `Transcripción: ${transcription || '(sin audio)'}`,
+                `Transcripción del recorrido:\n${transcription || '(sin audio)'}`,
               ].filter(Boolean).join('\n\n'),
             },
             ...imageMessages,

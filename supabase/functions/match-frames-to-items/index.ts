@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
 ${transcriptionTrimmed}
 """
 
-## FRAMES EXTRAÍDOS DEL VIDEO
+## FRAMES EXTRAÍDOS DEL VIDEO (con descripción visual de cada uno)
 [
 ${framesDesc}
 ]
@@ -128,14 +128,14 @@ ${itemsDesc}
 ]
 
 ## TAREA
-Para cada pendiente, identificá el frame que mejor captura el momento exacto del video donde se menciona o se muestra esa situación.
+Para cada pendiente, encontrá el frame que MEJOR muestra visualmente la situación descripta.
 
-Criterios de selección del frame ideal:
-1. Buscá en la transcripción cuándo se menciona el pendiente (por palabras clave del texto o del rubro).
-2. Elegí el frame cuyo timestamp_sec esté más cerca del momento en que se menciona.
-3. Si la descripción visual del frame coincide con lo descripto en el pendiente, priorizala.
-4. Cada pendiente debe tener exactamente un frame. Un mismo frame puede asignarse a varios pendientes si están relacionados.
-5. Si no hay un match claro, asigná el frame más cercano por contexto.
+Criterios en orden de prioridad:
+1. VISUAL PRIMERO: la descripcion_visual del frame debe mostrar algo relacionado con el pendiente (mismo sector, mismo material, mismo defecto).
+2. UBICACIÓN: si el pendiente menciona una unidad o sector específico (P00, baño, living, etc.), preferí frames cuya descripcion_visual coincida con esa ubicación.
+3. TIMESTAMP: como desempate, elegí el frame temporalmente más cercano al momento en que se menciona el pendiente en la transcripción.
+4. Cada pendiente debe tener exactamente un frame. Un frame puede usarse para múltiples pendientes si todos se ven en él.
+5. Si ningún frame muestra claramente la situación, asigná el frame cuya descripción visual sea más relacionada (aunque sea parcialmente).
 
 Respondé SOLO con JSON válido:
 { "matches": [ { "item_id": "...", "frame_id": "..." } ] }`;
