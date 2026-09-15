@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     const [framesRes, itemsRes] = await Promise.all([
       supabaseAdmin
         .from('report_frames')
-        .select('id, timestamp_sec, visual_description, order_index')
+        .select('id, storage_path, timestamp_sec, order_index')
         .eq('report_id', report_id)
         .order('order_index'),
       supabaseAdmin
@@ -99,46 +99,39 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build the prompt
-    const framesDesc = frames.map((f) =>
-      `  { "frame_id": "${f.id}", "timestamp_sec": ${f.timestamp_sec}, "descripcion_visual": ${JSON.stringify(f.visual_description ?? 'sin descripción')} }`
-    ).join(',\n');
+    // Generate signed URLs for all frames so GPT-4o can see the actual images
+    const frameSignedUrls: Record<string, string> = {};
+    await Promise.all(
+      frames.slice(0, 24).map(async (frame) => {
+        const { data } = await supabaseAdmin.storage
+          .from('report-frames')
+          .createSignedUrl(frame.storage_path, 600);
+        if (data?.signedUrl) frameSignedUrls[frame.id] = data.signedUrl;
+      })
+    );
+
+    const framesWithUrls = frames.filter((f) => frameSignedUrls[f.id]);
 
     const itemsDesc = items.map((it) =>
       `  { "item_id": "${it.id}", "pendiente": ${JSON.stringify(it.description)}, "rubro": ${JSON.stringify(it.trade ?? 'General')} }`
     ).join(',\n');
 
-    const transcriptionTrimmed = report.transcription.slice(0, 6000);
+    const transcriptionTrimmed = report.transcription.slice(0, 4000);
 
-    const prompt = `Sos un asistente experto en inspección de obras de construcción.
+    // Build interleaved content: label + image for each frame
+    const frameContent: { type: string; text?: string; image_url?: { url: string; detail: string } }[] =
+      framesWithUrls.flatMap((frame) => [
+        { type: 'text', text: `[Frame ID="${frame.id}" t=${frame.timestamp_sec}s]` },
+        { type: 'image_url', image_url: { url: frameSignedUrls[frame.id], detail: 'low' } },
+      ]);
 
-## TRANSCRIPCIÓN DEL VIDEO (primeros 6000 caracteres)
-"""
-${transcriptionTrimmed}
-"""
-
-## FRAMES EXTRAÍDOS DEL VIDEO (con descripción visual de cada uno)
-[
-${framesDesc}
-]
-
-## PENDIENTES IDENTIFICADOS
-[
-${itemsDesc}
-]
-
-## TAREA
-Para cada pendiente, encontrá el frame que MEJOR muestra visualmente la situación descripta.
-
-Criterios en orden de prioridad:
-1. VISUAL PRIMERO: la descripcion_visual del frame debe mostrar algo relacionado con el pendiente (mismo sector, mismo material, mismo defecto).
-2. UBICACIÓN: si el pendiente menciona una unidad o sector específico (P00, baño, living, etc.), preferí frames cuya descripcion_visual coincida con esa ubicación.
-3. TIMESTAMP: como desempate, elegí el frame temporalmente más cercano al momento en que se menciona el pendiente en la transcripción.
-4. Cada pendiente debe tener exactamente un frame. Un frame puede usarse para múltiples pendientes si todos se ven en él.
-5. Si ningún frame muestra claramente la situación, asigná el frame cuya descripción visual sea más relacionada (aunque sea parcialmente).
-
-Respondé SOLO con JSON válido:
-{ "matches": [ { "item_id": "...", "frame_id": "..." } ] }`;
+    const userContent = [
+      {
+        type: 'text',
+        text: `TRANSCRIPCIÓN:\n"""${transcriptionTrimmed}"""\n\nPENDIENTES:\n[${itemsDesc}]\n\nA continuación verás los frames del video, cada uno precedido por su ID y timestamp. Para cada pendiente, elegí el frame cuya imagen muestra mejor la situación descripta (mismo sector, mismo defecto, misma zona).`,
+      },
+      ...frameContent,
+    ];
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -151,9 +144,9 @@ Respondé SOLO con JSON válido:
         messages: [
           {
             role: 'system',
-            content: 'Sos un asistente de inspección de obras. Analizás transcripciones y frames de video para identificar el frame más relevante para cada pendiente. Respondés exclusivamente con JSON válido.',
+            content: 'Sos un inspector de obras experto. Analizás frames de video de recorridos de obra y los asociás a los pendientes detectados. Para cada pendiente elegís el frame que mejor muestra VISUALMENTE esa situación — no el más cercano en tiempo, sino el que realmente se ve en la imagen. Respondés exclusivamente con JSON válido: { "matches": [ { "item_id": "...", "frame_id": "..." } ] }',
           },
-          { role: 'user', content: prompt },
+          { role: 'user', content: userContent },
         ],
         response_format: { type: 'json_object' },
         temperature: 0.1,
