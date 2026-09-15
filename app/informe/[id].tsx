@@ -368,7 +368,7 @@ export default function InformeScreen() {
     }
   }
 
-  function buildHtml(fotoBase64?: string | null, itemImagesBase64?: Record<string, string>, frameImagesBase64?: Record<string, string>): string {
+  function buildHtml(fotoBase64?: string | null, itemImagesBase64?: Record<string, string>, frameImagesBase64?: Record<string, string>, frameSignedUrls?: Record<string, string>): string {
     if (!report) return '';
     const isOf = report.type === 'oficina';
     const dateStr = formatDate(report.created_at);
@@ -382,11 +382,13 @@ export default function InformeScreen() {
       : (report.foto_url?.startsWith('https://') ? report.foto_url : '');
 
     const itemCards = items.map((item) => {
-      // Priority: video frame > manual photo
+      // Priority: video frame > manual photo; fall back to signed URL if base64 unavailable
       const frameBase64 = item.frame_id ? frameImagesBase64?.[item.frame_id] : undefined;
+      const frameUrl   = item.frame_id ? frameSignedUrls?.[item.frame_id] : undefined;
       const manualBase64 = itemImagesBase64?.[item.id];
-      const imgHtml = frameBase64
-        ? `<img class="item-img" src="data:image/jpeg;base64,${frameBase64}" /><div class="item-img-label">Captura del video</div>`
+      const frameSrc = frameBase64 ? `data:image/jpeg;base64,${frameBase64}` : (frameUrl ?? '');
+      const imgHtml = frameSrc
+        ? `<img class="item-img" src="${escHtml(frameSrc)}" /><div class="item-img-label">Captura del video</div>`
         : manualBase64
           ? `<img class="item-img" src="data:image/jpeg;base64,${manualBase64}" />`
           : '';
@@ -545,7 +547,7 @@ export default function InformeScreen() {
         })
       );
 
-      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64, itemImagesBase64, frameImagesBase64), base64: false });
+      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64, itemImagesBase64, frameImagesBase64, frameUrls), base64: false });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Exportar informe' });
     } catch {
       Alert.alert('Error', 'No se pudo generar el PDF.');
@@ -833,14 +835,30 @@ export default function InformeScreen() {
                       <Text style={styles.pdfTdDesc}>{item.description}</Text>
                     </TouchableOpacity>
 
-                    {/* Image below the row */}
+                    {/* Frame image (AI-matched) */}
+                    {item.frame_id && frameUrls[item.frame_id] ? (
+                      <View style={styles.pdfItemImageWrap}>
+                        <TouchableOpacity activeOpacity={0.9} onPress={() => setLightboxUri(frameUrls[item.frame_id!])}>
+                          <Image source={{ uri: frameUrls[item.frame_id] }} style={styles.pdfItemImage} resizeMode="cover" />
+                        </TouchableOpacity>
+                        <View style={styles.pdfItemFrameRow}>
+                          <View style={styles.itemFrameBadge}>
+                            <Feather name="video" size={9} color={colors.gris} />
+                            <Text style={styles.itemFrameBadgeText}>Captura IA</Text>
+                          </View>
+                          <TouchableOpacity onPress={() => setFramePickerItemId(item.id)} activeOpacity={0.8}>
+                            <Text style={styles.itemReplaceBtnText}>Reemplazar</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ) : null}
+
+                    {/* Manual photo */}
                     {itemImages[item.id] ? (
-                      <TouchableOpacity
-                        style={styles.pdfItemImageWrap}
-                        activeOpacity={0.9}
-                        onPress={() => setLightboxUri(itemImages[item.id])}
-                      >
-                        <Image source={{ uri: itemImages[item.id] }} style={styles.pdfItemImage} resizeMode="cover" />
+                      <View style={styles.pdfItemImageWrap}>
+                        <TouchableOpacity activeOpacity={0.9} onPress={() => setLightboxUri(itemImages[item.id])}>
+                          <Image source={{ uri: itemImages[item.id] }} style={styles.pdfItemImage} resizeMode="cover" />
+                        </TouchableOpacity>
                         <TouchableOpacity
                           style={styles.pdfItemReplaceBtn}
                           onPress={() => handlePickItemImage(item.id)}
@@ -852,7 +870,7 @@ export default function InformeScreen() {
                             : <><Feather name="refresh-cw" size={10} color={colors.gris} /><Text style={styles.itemReplaceBtnText}>Reemplazar</Text></>
                           }
                         </TouchableOpacity>
-                      </TouchableOpacity>
+                      </View>
                     ) : (
                       <TouchableOpacity
                         style={styles.pdfItemAddBtn}
@@ -1270,6 +1288,7 @@ const styles = StyleSheet.create({
   pdfTdDesc: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: '#12151A', lineHeight: 17 },
 
   pdfItemImageWrap: { marginHorizontal: 10, marginBottom: 6, gap: 6 },
+  pdfItemFrameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 2 },
   pdfItemImage: { width: '100%', aspectRatio: 16 / 9, borderRadius: 8, backgroundColor: '#F0EDE8' },
   pdfItemReplaceBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start',
