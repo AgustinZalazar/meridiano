@@ -86,10 +86,16 @@ export async function processVideoReport(reportId: string): Promise<void> {
       }
     }
 
-    // 5. Upload frames to report-frames bucket & build DB records
+    // 5. Upload frames to report-frames bucket, describe each with GPT-4o Vision & build DB records
     const frameFiles = fs.readdirSync(framesDir).sort();
     const frameBase64: string[] = [];
-    const frameDbRecords: { report_id: string; storage_path: string; timestamp_sec: number; order_index: number }[] = [];
+    const frameDbRecords: {
+      report_id: string;
+      storage_path: string;
+      timestamp_sec: number;
+      order_index: number;
+      visual_description: string | null;
+    }[] = [];
 
     for (let i = 0; i < frameFiles.length; i++) {
       const file = frameFiles[i];
@@ -105,11 +111,42 @@ export async function processVideoReport(reportId: string): Promise<void> {
         continue;
       }
 
+      // Describe frame with GPT-4o Vision for better AI matching
+      let visual_description: string | null = null;
+      try {
+        const b64 = buf.toString('base64');
+        const visionRes = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          max_tokens: 150,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Describí en una oración corta (máx 120 caracteres) qué se ve en esta imagen de una obra de construcción. Enfocate en los elementos constructivos visibles, materiales, trabajos en ejecución o defectos.',
+              },
+              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}`, detail: 'low' } },
+            ],
+          }],
+        });
+        visual_description = visionRes.choices[0]?.message?.content?.trim() ?? null;
+      } catch (e) {
+        console.warn(`[${reportId}] Vision description failed for frame ${i}:`, e);
+      }
+
       frameBase64.push(buf.toString('base64'));
-      frameDbRecords.push({ report_id: reportId, storage_path: storagePath, timestamp_sec: i * 5, order_index: i });
+      frameDbRecords.push({
+        report_id: reportId,
+        storage_path: storagePath,
+        timestamp_sec: i * 5,
+        order_index: i,
+        visual_description,
+      });
     }
 
-    if (frameDbRecords.length > 0) {
+    if (frameDbRecords.length === 0) {
+      console.error(`[${reportId}] WARNING: 0 frames uploaded — check that the 'report-frames' bucket exists in Supabase Storage`);
+    } else {
       await supabase.from('report_frames').insert(frameDbRecords);
     }
     console.log(`[${reportId}] ${frameDbRecords.length} frames uploaded`);
