@@ -107,7 +107,7 @@ function ItemCard({ item, frameUrl, imageUri, uploading, onPickImage, onImagePre
         {frameUrl ? (
           <View style={styles.itemImageWrap}>
             <TouchableOpacity activeOpacity={0.9} onPress={() => onImagePress(frameUrl)}>
-              <Image source={{ uri: frameUrl }} style={styles.itemImage} resizeMode="cover" />
+              <Image source={{ uri: frameUrl }} style={styles.itemImage} resizeMode="contain" />
             </TouchableOpacity>
             <View style={styles.itemFrameActions}>
               <View style={styles.itemFrameBadge}>
@@ -436,7 +436,7 @@ export default function InformeScreen() {
   .item-trade { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #888; }
   .item-status { font-size: 9px; text-transform: capitalize; color: #AAA; }
   .item-desc { font-size: 12px; color: #12151A; line-height: 1.55; }
-  .item-img { width: 100%; max-height: 240px; object-fit: cover; border-radius: 6px; margin-top: 10px; display: block; border: 1px solid #EEE; }
+  .item-img { width: 100%; max-height: 240px; object-fit: contain; border-radius: 6px; margin-top: 10px; display: block; border: 1px solid #EEE; background: #F5F5F3; }
   .item-img-label { font-size: 8px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
   .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #eee; font-size: 9px; color: #aaa; text-align: center; letter-spacing: 0.5px; text-transform: uppercase; }
 </style>
@@ -839,7 +839,7 @@ export default function InformeScreen() {
                     {item.frame_id && frameUrls[item.frame_id] ? (
                       <View style={styles.pdfItemImageWrap}>
                         <TouchableOpacity activeOpacity={0.9} onPress={() => setLightboxUri(frameUrls[item.frame_id!])}>
-                          <Image source={{ uri: frameUrls[item.frame_id] }} style={styles.pdfItemImage} resizeMode="cover" />
+                          <Image source={{ uri: frameUrls[item.frame_id] }} style={styles.pdfItemImage} resizeMode="contain" />
                         </TouchableOpacity>
                         <View style={styles.pdfItemFrameRow}>
                           <View style={styles.itemFrameBadge}>
