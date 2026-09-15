@@ -412,6 +412,7 @@ export default function ProyectoScreen() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('rubros');
   const [pendType, setPendType] = useState<ReportType>('contratistas');
+  const [pendStatusFilter, setPendStatusFilter] = useState<PendingStatus | 'active'>('active');
   const [planoSheet, setPlanoSheet] = useState(false);
   const [planoName, setPlanoName] = useState('');
   const [planoType, setPlanoType] = useState<typeof PLAN_TYPES[number]>('ARQUITECTURA');
@@ -544,6 +545,8 @@ export default function ProyectoScreen() {
     const type = p.reports?.type;
     if (type && type !== pendType) return false;
     if (pendRubroFilter && p.rubro_id !== pendRubroFilter) return false;
+    if (pendStatusFilter === 'active' && p.status === 'resuelto') return false;
+    if (pendStatusFilter !== 'active' && p.status !== pendStatusFilter) return false;
     return true;
   });
 
@@ -722,6 +725,23 @@ export default function ProyectoScreen() {
                 selected={pendType === 'contratistas' ? 'Contratistas' : 'Oficina técnica'}
                 onChange={(v) => setPendType(v === 'Contratistas' ? 'contratistas' : 'oficina')}
               />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.rubroFilterStrip}
+                contentContainerStyle={styles.rubroFilterRow}
+              >
+                {([['active', 'Activos'], ['pendiente', 'Pendiente'], ['en_revision', 'En revisión'], ['resuelto', 'Resuelto']] as const).map(([val, label]) => (
+                  <TouchableOpacity
+                    key={val}
+                    style={[styles.rubroChip, pendStatusFilter === val && styles.rubroChipActive]}
+                    onPress={() => setPendStatusFilter(val)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.rubroChipText, pendStatusFilter === val && styles.rubroChipTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
               {rubros.length > 1 && (
                 <ScrollView
                   horizontal
