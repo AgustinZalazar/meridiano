@@ -153,7 +153,7 @@ function ItemCard({ item, frameUrl, imageUri, uploading, onPickImage, onImagePre
   );
 }
 
-function TradeGroup({ trade, items, index, itemImages, frameUrls, uploadingId, matchingFrames, onPickImage, onImagePress, onReplaceFrame }: {
+function TradeGroup({ trade, items, index, itemImages, frameUrls, uploadingId, matchingFrames, onPickImage, onImagePress, onReplaceFrame, resolved }: {
   trade: string;
   items: PendingItem[];
   index: number;
@@ -164,6 +164,7 @@ function TradeGroup({ trade, items, index, itemImages, frameUrls, uploadingId, m
   onPickImage: (itemId: string) => void;
   onImagePress: (uri: string) => void;
   onReplaceFrame: (itemId: string) => void;
+  resolved?: boolean;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -175,7 +176,7 @@ function TradeGroup({ trade, items, index, itemImages, frameUrls, uploadingId, m
 
   return (
     <Animated.View style={{
-      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, resolved ? 0.5 : 1], extrapolate: 'clamp' }),
       transform: [
         { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
         { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
@@ -229,6 +230,7 @@ export default function InformeScreen() {
   const [frameUrls, setFrameUrls] = useState<Record<string, string>>({});
   const [matchingFrames, setMatchingFrames] = useState(false);
   const [framePickerItemId, setFramePickerItemId] = useState<string | null>(null);
+  const [resolvedExpanded, setResolvedExpanded] = useState(false);
 
   useEffect(() => {
     if (!id || id === 'demo') { setLoading(false); return; }
@@ -587,7 +589,10 @@ export default function InformeScreen() {
 
   const isOficina = report?.type === 'oficina';
   const typeLabel = isOficina ? 'Observación oficina técnica' : 'Informe contratistas';
-  const groups = groupByTrade(items);
+  const activeItems = items.filter((i) => i.status !== 'resuelto');
+  const resolvedItems = items.filter((i) => i.status === 'resuelto');
+  const groups = groupByTrade(activeItems);
+  const resolvedGroups = groupByTrade(resolvedItems);
   const rubroLabel = [report?.rubros?.code, report?.rubros?.name].filter(Boolean).join(' · ');
   const isDemoMode = !id || id === 'demo';
 
@@ -650,8 +655,14 @@ export default function InformeScreen() {
           <View style={styles.summaryRow}>
             <View style={styles.summaryChip}>
               <Feather name="alert-circle" size={11} color={colors.arena} />
-              <Text style={[styles.summaryChipText, { color: colors.arena }]}>{items.length} pendiente{items.length !== 1 ? 's' : ''}</Text>
+              <Text style={[styles.summaryChipText, { color: colors.arena }]}>{activeItems.length} pendiente{activeItems.length !== 1 ? 's' : ''}</Text>
             </View>
+            {resolvedItems.length > 0 && (
+              <View style={[styles.summaryChip, { backgroundColor: 'rgba(74,163,102,0.10)' }]}>
+                <Feather name="check-circle" size={11} color="#4AA366" />
+                <Text style={[styles.summaryChipText, { color: '#4AA366' }]}>{resolvedItems.length} resuelto{resolvedItems.length !== 1 ? 's' : ''}</Text>
+              </View>
+            )}
             {report?.ai_summary && (
               <View style={styles.summaryChip}>
                 <Feather name="cpu" size={11} color={colors.gris} />
@@ -674,7 +685,7 @@ export default function InformeScreen() {
           </View>
         )}
 
-        {/* Pending items grouped by trade — each with its own image */}
+        {/* Active pending items */}
         {groups.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="check-circle" size={28} color={colors.faint} />
@@ -698,6 +709,39 @@ export default function InformeScreen() {
               onReplaceFrame={setFramePickerItemId}
             />
           ))
+        )}
+
+        {/* Resolved items — collapsible section */}
+        {resolvedItems.length > 0 && (
+          <View style={styles.resolvedSection}>
+            <TouchableOpacity
+              style={styles.resolvedHeader}
+              onPress={() => setResolvedExpanded((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.resolvedHeaderLeft}>
+                <Feather name="check-circle" size={14} color="#4AA366" />
+                <Text style={styles.resolvedHeaderText}>Resueltos ({resolvedItems.length})</Text>
+              </View>
+              <Feather name={resolvedExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.gris} />
+            </TouchableOpacity>
+            {resolvedExpanded && resolvedGroups.map((g, i) => (
+              <TradeGroup
+                key={g.trade}
+                trade={g.trade}
+                items={g.items}
+                index={i}
+                itemImages={itemImages}
+                frameUrls={frameUrls}
+                uploadingId={uploadingImageId}
+                matchingFrames={false}
+                onPickImage={handlePickItemImage}
+                onImagePress={setLightboxUri}
+                onReplaceFrame={setFramePickerItemId}
+                resolved
+              />
+            ))}
+          </View>
         )}
 
         {/* Actions */}
@@ -1200,6 +1244,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start',
   },
   chipText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
+
+  resolvedSection: { marginHorizontal: spacing.xl, gap: 0 },
+  resolvedHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, paddingHorizontal: 4,
+    borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  resolvedHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  resolvedHeaderText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: colors.gris },
 
   emptyState: { alignItems: 'center', gap: 10, paddingVertical: 40 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
