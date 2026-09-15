@@ -26,6 +26,27 @@ const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string; color: stri
   { value: 'finalizado', label: 'Finalizado',       color: colors.success },
 ];
 
+type PropertyType = 'edificio' | 'casa' | 'local_comercial' | 'oficina' | 'nave_industrial' | 'otro';
+type TipoObra     = 'obra_nueva' | 'refaccion' | 'ampliacion' | 'demolicion' | 'otro';
+
+const PROPERTY_TYPE_LABEL: Record<PropertyType, string> = {
+  edificio: 'Edificio', casa: 'Casa', local_comercial: 'Local comercial',
+  oficina: 'Oficina', nave_industrial: 'Nave industrial', otro: 'Otro',
+};
+const PROPERTY_TYPE_ICON: Record<PropertyType, React.ComponentProps<typeof Feather>['name']> = {
+  edificio: 'layers', casa: 'home', local_comercial: 'shopping-bag',
+  oficina: 'briefcase', nave_industrial: 'package', otro: 'more-horizontal',
+};
+const TIPO_OBRA_LABEL: Record<TipoObra, string> = {
+  obra_nueva: 'Obra nueva', refaccion: 'Refacción', ampliacion: 'Ampliación',
+  demolicion: 'Demolición', otro: 'Otro',
+};
+const AMENITY_LABEL: Record<string, string> = {
+  pileta: 'Pileta', quincho: 'Quincho', gym: 'Gym', sum: 'SUM',
+  jardin: 'Jardín', terraza: 'Terraza', solarium: 'Solarium',
+  laundry: 'Laundry', bauleras: 'Bauleras', porteria: 'Portería', vigilancia: 'Vigilancia',
+};
+
 interface DbProject {
   id: string;
   name: string;
@@ -34,6 +55,22 @@ interface DbProject {
   start_date: string | null;
   end_date: string | null;
   status: ProjectStatus | null;
+  // Property profile
+  property_type: PropertyType | null;
+  tipo_obra: TipoObra | null;
+  m2_cubiertos: number | null;
+  m2_totales: number | null;
+  m2_terreno: number | null;
+  pisos: number | null;
+  unidades: number | null;
+  dormitorios: number | null;
+  banos: number | null;
+  ambientes: number | null;
+  cocheras: number | null;
+  amenities: string[];
+  direccion: string | null;
+  comitente: string | null;
+  anio_proyecto: number | null;
 }
 
 interface DbRubro {
@@ -270,6 +307,96 @@ function PendienteCard({ item, rubroName, index, onPress }: { item: DbPendingIte
   );
 }
 
+// ─── PropertyProfileCard ─────────────────────────────────────────────────────
+
+function PropertyProfileCard({ project }: { project: DbProject }) {
+  const { property_type: pt, tipo_obra: to, m2_cubiertos, m2_totales, m2_terreno,
+    pisos, unidades, dormitorios, banos, ambientes, cocheras,
+    amenities, direccion, comitente, anio_proyecto } = project;
+
+  const hasAny = pt || to || m2_cubiertos || m2_totales || m2_terreno || pisos ||
+    unidades || dormitorios || banos || ambientes || cocheras ||
+    (amenities?.length > 0) || direccion || comitente || anio_proyecto;
+
+  if (!hasAny) return null;
+
+  const fmt = (n: number | null) => n != null ? n.toLocaleString('es-AR') : null;
+
+  return (
+    <View style={styles.propCard}>
+      {/* Type row */}
+      {(pt || to) && (
+        <View style={styles.propTypeRow}>
+          {pt && (
+            <View style={styles.propTypeBadge}>
+              <Feather name={PROPERTY_TYPE_ICON[pt]} size={12} color={colors.arena} />
+              <Text style={styles.propTypeBadgeText}>{PROPERTY_TYPE_LABEL[pt]}</Text>
+            </View>
+          )}
+          {to && (
+            <View style={styles.propObraBadge}>
+              <Text style={styles.propObraBadgeText}>{TIPO_OBRA_LABEL[to]}</Text>
+            </View>
+          )}
+          {anio_proyecto && (
+            <Text style={styles.propAnio}>{anio_proyecto}</Text>
+          )}
+        </View>
+      )}
+
+      {/* Metros */}
+      {(m2_cubiertos || m2_totales || m2_terreno) && (
+        <View style={styles.propMetrosRow}>
+          {m2_cubiertos ? <View style={styles.propMetroItem}><Text style={styles.propMetroVal}>{fmt(m2_cubiertos)}</Text><Text style={styles.propMetroLabel}>m² cub.</Text></View> : null}
+          {m2_totales   ? <View style={styles.propMetroItem}><Text style={styles.propMetroVal}>{fmt(m2_totales)}</Text><Text style={styles.propMetroLabel}>m² tot.</Text></View> : null}
+          {m2_terreno   ? <View style={styles.propMetroItem}><Text style={styles.propMetroVal}>{fmt(m2_terreno)}</Text><Text style={styles.propMetroLabel}>m² terreno</Text></View> : null}
+        </View>
+      )}
+
+      {/* Datos específicos */}
+      {(pisos || unidades || dormitorios || banos || ambientes || cocheras) && (
+        <View style={styles.propDatosRow}>
+          {pisos      ? <View style={styles.propDato}><Feather name="layers" size={10} color={colors.gris} /><Text style={styles.propDatoText}>{pisos} pisos</Text></View> : null}
+          {unidades   ? <View style={styles.propDato}><Feather name="grid" size={10} color={colors.gris} /><Text style={styles.propDatoText}>{unidades} unidades</Text></View> : null}
+          {ambientes  ? <View style={styles.propDato}><Feather name="home" size={10} color={colors.gris} /><Text style={styles.propDatoText}>{ambientes} amb.</Text></View> : null}
+          {dormitorios? <View style={styles.propDato}><Feather name="moon" size={10} color={colors.gris} /><Text style={styles.propDatoText}>{dormitorios} dorm.</Text></View> : null}
+          {banos      ? <View style={styles.propDato}><Feather name="droplet" size={10} color={colors.gris} /><Text style={styles.propDatoText}>{banos} baños</Text></View> : null}
+          {cocheras   ? <View style={styles.propDato}><Feather name="square" size={10} color={colors.gris} /><Text style={styles.propDatoText}>{cocheras} coch.</Text></View> : null}
+        </View>
+      )}
+
+      {/* Amenities */}
+      {amenities?.length > 0 && (
+        <View style={styles.propAmenities}>
+          {amenities.map((a) => (
+            <View key={a} style={styles.propAmenityChip}>
+              <Text style={styles.propAmenityText}>{AMENITY_LABEL[a] ?? a}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Dirección / comitente */}
+      {(direccion || comitente) && (
+        <View style={styles.propFooter}>
+          {comitente && (
+            <View style={styles.propFooterItem}>
+              <Feather name="user" size={10} color={colors.gris} />
+              <Text style={styles.propFooterText} numberOfLines={1}>{comitente}</Text>
+            </View>
+          )}
+          {direccion && (
+            <View style={styles.propFooterItem}>
+              <Feather name="map-pin" size={10} color={colors.gris} />
+              <Text style={styles.propFooterText} numberOfLines={1}>{direccion}</Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProyectoScreen() {
@@ -302,7 +429,7 @@ export default function ProyectoScreen() {
       setLoading(true);
 
       Promise.all([
-        supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date, status').eq('id', projectId).single(),
+        supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date, status, property_type, tipo_obra, m2_cubiertos, m2_totales, m2_terreno, pisos, unidades, dormitorios, banos, ambientes, cocheras, amenities, direccion, comitente, anio_proyecto').eq('id', projectId).single(),
         supabase.from('rubros').select('id, code, name, contractor, status, start_date, end_date, actual_start_date, actual_end_date').eq('project_id', projectId).order('created_at'),
         supabase.from('pending_items').select('id, description, rubro_id, trade, status, reports(type), created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
         supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
@@ -524,6 +651,7 @@ export default function ProyectoScreen() {
         <FlatList
           data={rubros}
           keyExtractor={(item) => item.id}
+          ListHeaderComponent={<PropertyProfileCard project={project} />}
           renderItem={({ item, index }) => (
             <RubroCard
               rubro={item}
@@ -1007,4 +1135,44 @@ const styles = StyleSheet.create({
   statusOptionDot: { width: 10, height: 10, borderRadius: 5 },
   statusOptionText: { flex: 1, fontFamily: fonts.archivo.bold, fontSize: 14.5, color: colors.gris },
   statusOptionTextActive: { color: colors.crema },
+
+  // Property profile card
+  propCard: {
+    backgroundColor: colors.panel, borderRadius: 18, padding: 14, gap: 12,
+    marginHorizontal: spacing.xl, marginBottom: spacing.md,
+    shadowColor: '#12151A', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 1,
+  },
+  propTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  propTypeBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    height: 26, paddingHorizontal: 10, borderRadius: 13,
+    backgroundColor: 'rgba(217,119,87,0.10)',
+  },
+  propTypeBadgeText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: colors.arena },
+  propObraBadge: {
+    height: 26, paddingHorizontal: 10, borderRadius: 13,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+  },
+  propObraBadgeText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: colors.gris },
+  propAnio: { fontFamily: fonts.mono.regular, fontSize: 11, color: colors.faint, marginLeft: 'auto' },
+  propMetrosRow: { flexDirection: 'row', gap: 0 },
+  propMetroItem: { flex: 1, alignItems: 'center', gap: 2 },
+  propMetroVal: { fontFamily: fonts.archivo.bold, fontSize: 16, color: colors.crema, letterSpacing: -0.5 },
+  propMetroLabel: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.gris, letterSpacing: 0.4, textTransform: 'uppercase' },
+  propDatosRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  propDato: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    height: 24, paddingHorizontal: 8, borderRadius: 12, backgroundColor: colors.chip,
+  },
+  propDatoText: { fontFamily: fonts.archivo.bold, fontSize: 10, color: colors.gris },
+  propAmenities: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  propAmenityChip: {
+    height: 22, paddingHorizontal: 8, borderRadius: 11,
+    borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  propAmenityText: { fontFamily: fonts.archivo.bold, fontSize: 10, color: colors.gris },
+  propFooter: { gap: 5, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 },
+  propFooterItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  propFooterText: { fontFamily: fonts.archivo.semibold, fontSize: 11, color: colors.gris, flex: 1 },
 });
