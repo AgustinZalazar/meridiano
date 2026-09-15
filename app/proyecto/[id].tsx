@@ -413,6 +413,7 @@ export default function ProyectoScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('rubros');
   const [pendType, setPendType] = useState<ReportType>('contratistas');
   const [pendStatusFilter, setPendStatusFilter] = useState<PendingStatus | 'active'>('active');
+  const [pendFilterSheet, setPendFilterSheet] = useState(false);
   const [planoSheet, setPlanoSheet] = useState(false);
   const [planoName, setPlanoName] = useState('');
   const [planoType, setPlanoType] = useState<typeof PLAN_TYPES[number]>('ARQUITECTURA');
@@ -720,28 +721,18 @@ export default function ProyectoScreen() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View style={styles.pendFiltersWrap}>
-              <SlidingTabs
-                options={['Contratistas', 'Oficina técnica']}
-                selected={pendType === 'contratistas' ? 'Contratistas' : 'Oficina técnica'}
-                onChange={(v) => setPendType(v === 'Contratistas' ? 'contratistas' : 'oficina')}
-              />
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.rubroFilterStrip}
-                contentContainerStyle={styles.rubroFilterRow}
-              >
-                {([['active', 'Activos'], ['pendiente', 'Pendiente'], ['en_revision', 'En revisión'], ['resuelto', 'Resuelto']] as const).map(([val, label]) => (
-                  <TouchableOpacity
-                    key={val}
-                    style={[styles.rubroChip, pendStatusFilter === val && styles.rubroChipActive]}
-                    onPress={() => setPendStatusFilter(val)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.rubroChipText, pendStatusFilter === val && styles.rubroChipTextActive]}>{label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              <View style={styles.pendFilterTopRow}>
+                <Text style={styles.pendFilterCount}>{filteredPendientes.length} resultado{filteredPendientes.length !== 1 ? 's' : ''}</Text>
+                <TouchableOpacity
+                  style={[styles.pendFilterBtn, (pendStatusFilter !== 'active' || pendType !== 'contratistas') && styles.pendFilterBtnActive]}
+                  onPress={() => setPendFilterSheet(true)}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="sliders" size={13} color={(pendStatusFilter !== 'active' || pendType !== 'contratistas') ? colors.arena : colors.gris} />
+                  <Text style={[styles.pendFilterBtnText, (pendStatusFilter !== 'active' || pendType !== 'contratistas') && styles.pendFilterBtnTextActive]}>Filtros</Text>
+                  {(pendStatusFilter !== 'active' || pendType !== 'contratistas') && <View style={styles.pendFilterDot} />}
+                </TouchableOpacity>
+              </View>
               {rubros.length > 1 && (
                 <ScrollView
                   horizontal
@@ -879,6 +870,40 @@ export default function ProyectoScreen() {
         })}
       </View>
       </View>
+
+      {/* ── Sheet filtros pendientes ─────────────────────── */}
+      <BottomSheet visible={pendFilterSheet} onClose={() => setPendFilterSheet(false)}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetTitleRow}>
+            <Text style={styles.sheetTitle}>Filtros</Text>
+            {(pendStatusFilter !== 'active' || pendType !== 'contratistas') && (
+              <TouchableOpacity onPress={() => { setPendStatusFilter('active'); setPendType('contratistas'); }} activeOpacity={0.7}>
+                <Text style={styles.sheetReset}>Limpiar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <Text style={styles.sheetGroupLabel}>TIPO</Text>
+          <View style={styles.chipRow}>
+            {([['contratistas', 'Contratistas'], ['oficina', 'Oficina técnica']] as const).map(([val, label]) => (
+              <TouchableOpacity key={val} style={[styles.filterChip, pendType === val && styles.filterChipActive]} onPress={() => setPendType(val)} activeOpacity={0.8}>
+                <Text style={[styles.filterChipText, pendType === val && styles.filterChipTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.sheetGroupLabel}>ESTADO</Text>
+          <View style={styles.chipRow}>
+            {([['active', 'Activos'], ['pendiente', 'Pendiente'], ['en_revision', 'En revisión'], ['resuelto', 'Resuelto']] as const).map(([val, label]) => (
+              <TouchableOpacity key={val} style={[styles.filterChip, pendStatusFilter === val && styles.filterChipActive]} onPress={() => setPendStatusFilter(val)} activeOpacity={0.8}>
+                <Text style={[styles.filterChipText, pendStatusFilter === val && styles.filterChipTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TouchableOpacity style={styles.sheetApplyBtn} onPress={() => setPendFilterSheet(false)} activeOpacity={0.85}>
+            <Text style={styles.sheetApplyText}>Ver {filteredPendientes.length} resultado{filteredPendientes.length !== 1 ? 's' : ''}</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
 
       {/* ── Sheet estado del proyecto ────────────────────── */}
       <BottomSheet visible={statusSheetVisible} onClose={() => setStatusSheetVisible(false)}>
@@ -1132,6 +1157,34 @@ const styles = StyleSheet.create({
 
   // Pendientes filters
   pendFiltersWrap: { gap: 8, marginBottom: 6 },
+  pendFilterTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xl },
+  pendFilterCount: { fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 0.5, color: colors.gris, textTransform: 'uppercase' },
+  pendFilterBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    height: 30, paddingHorizontal: 12, borderRadius: 15,
+    backgroundColor: colors.chip, borderWidth: 1, borderColor: 'transparent',
+  },
+  pendFilterBtnActive: { borderColor: colors.arena, backgroundColor: 'rgba(217,119,87,0.08)' },
+  pendFilterBtnText: { fontFamily: fonts.archivo.bold, fontSize: 11, color: colors.gris },
+  pendFilterBtnTextActive: { color: colors.arena },
+  pendFilterDot: {
+    width: 6, height: 6, borderRadius: 3, backgroundColor: colors.arena,
+    position: 'absolute', top: 4, right: 4,
+  },
+  // Filter sheet
+  sheetTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sheetReset: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.arena },
+  sheetGroupLabel: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700',
+  },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  filterChip: { height: 34, paddingHorizontal: 16, borderRadius: 17, backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center' },
+  filterChipActive: { backgroundColor: colors.crema },
+  filterChipText: { fontFamily: fonts.archivo.bold, fontSize: 12.5, color: colors.crema },
+  filterChipTextActive: { color: '#FFFFFF' },
+  sheetApplyBtn: { height: 54, borderRadius: 27, backgroundColor: colors.crema, alignItems: 'center', justifyContent: 'center', marginTop: spacing.xs },
+  sheetApplyText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
   rubroFilterStrip: { marginHorizontal: -spacing.xl },
   rubroFilterRow: { flexDirection: 'row', gap: 6, paddingHorizontal: spacing.xl },
   rubroChip: {
