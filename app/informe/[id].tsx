@@ -38,6 +38,15 @@ interface PendingItem {
   status: string;
   source: string;
   image_path: string | null;
+  frame_id: string | null;
+}
+
+interface ReportFrame {
+  id: string;
+  timestamp_sec: number;
+  visual_description: string | null;
+  order_index: number;
+  signedUrl?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -70,13 +79,18 @@ function Chip({ label }: { label: string }) {
   );
 }
 
-function ItemCard({ item, imageUri, uploading, onPickImage, onImagePress }: {
+function ItemCard({ item, frameUrl, imageUri, uploading, onPickImage, onImagePress, onReplaceFrame, matchingFrames }: {
   item: PendingItem;
+  frameUrl?: string;
   imageUri?: string;
   uploading: boolean;
   onPickImage: () => void;
   onImagePress: (uri: string) => void;
+  onReplaceFrame: () => void;
+  matchingFrames: boolean;
 }) {
+  const displayUrl = frameUrl ?? imageUri;
+
   return (
     <View style={styles.itemCard}>
       <View style={styles.itemDot} />
@@ -87,6 +101,32 @@ function ItemCard({ item, imageUri, uploading, onPickImage, onImagePress }: {
             <Chip label={item.trade} />
           </View>
         )}
+
+        {/* Video frame (AI-matched) */}
+        {frameUrl ? (
+          <View style={styles.itemImageWrap}>
+            <TouchableOpacity activeOpacity={0.9} onPress={() => onImagePress(frameUrl)}>
+              <Image source={{ uri: frameUrl }} style={styles.itemImage} resizeMode="cover" />
+            </TouchableOpacity>
+            <View style={styles.itemFrameActions}>
+              <View style={styles.itemFrameBadge}>
+                <Feather name="video" size={9} color={colors.gris} />
+                <Text style={styles.itemFrameBadgeText}>Captura IA</Text>
+              </View>
+              <TouchableOpacity style={styles.itemReplaceBtn} onPress={onReplaceFrame} activeOpacity={0.8}>
+                <Feather name="refresh-cw" size={10} color={colors.gris} />
+                <Text style={styles.itemReplaceBtnText}>Reemplazar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : matchingFrames ? (
+          <View style={styles.itemMatchingRow}>
+            <ActivityIndicator size="small" color={colors.gris} />
+            <Text style={styles.itemMatchingText}>Buscando captura…</Text>
+          </View>
+        ) : null}
+
+        {/* Manual photo (independent from frame) */}
         {imageUri ? (
           <View style={styles.itemImageWrap}>
             <TouchableOpacity activeOpacity={0.9} onPress={() => onImagePress(imageUri)}>
@@ -95,7 +135,7 @@ function ItemCard({ item, imageUri, uploading, onPickImage, onImagePress }: {
             <TouchableOpacity style={styles.itemReplaceBtn} onPress={onPickImage} activeOpacity={0.8} disabled={uploading}>
               {uploading
                 ? <ActivityIndicator size="small" color={colors.gris} />
-                : <><Feather name="refresh-cw" size={10} color={colors.gris} /><Text style={styles.itemReplaceBtnText}>Reemplazar</Text></>
+                : <><Feather name="camera" size={10} color={colors.gris} /><Text style={styles.itemReplaceBtnText}>Reemplazar foto</Text></>
               }
             </TouchableOpacity>
           </View>
@@ -112,14 +152,17 @@ function ItemCard({ item, imageUri, uploading, onPickImage, onImagePress }: {
   );
 }
 
-function TradeGroup({ trade, items, index, itemImages, uploadingId, onPickImage, onImagePress }: {
+function TradeGroup({ trade, items, index, itemImages, frameUrls, uploadingId, matchingFrames, onPickImage, onImagePress, onReplaceFrame }: {
   trade: string;
   items: PendingItem[];
   index: number;
   itemImages: Record<string, string>;
+  frameUrls: Record<string, string>;
   uploadingId: string | null;
+  matchingFrames: boolean;
   onPickImage: (itemId: string) => void;
   onImagePress: (uri: string) => void;
+  onReplaceFrame: (itemId: string) => void;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -146,10 +189,13 @@ function TradeGroup({ trade, items, index, itemImages, uploadingId, onPickImage,
         <ItemCard
           key={item.id}
           item={item}
+          frameUrl={item.frame_id ? frameUrls[item.frame_id] : undefined}
           imageUri={itemImages[item.id]}
           uploading={uploadingId === item.id}
+          matchingFrames={matchingFrames}
           onPickImage={() => onPickImage(item.id)}
           onImagePress={onImagePress}
+          onReplaceFrame={() => onReplaceFrame(item.id)}
         />
       ))}
     </View>
@@ -178,6 +224,10 @@ export default function InformeScreen() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [itemImages, setItemImages] = useState<Record<string, string>>({});
   const [uploadingImageId, setUploadingImageId] = useState<string | null>(null);
+  const [frames, setFrames] = useState<ReportFrame[]>([]);
+  const [frameUrls, setFrameUrls] = useState<Record<string, string>>({});
+  const [matchingFrames, setMatchingFrames] = useState(false);
+  const [framePickerItemId, setFramePickerItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id || id === 'demo') { setLoading(false); return; }
@@ -186,31 +236,89 @@ export default function InformeScreen() {
 
   async function fetchReport() {
     setLoading(true);
-    const [reportRes, itemsRes] = await Promise.all([
+    const [reportRes, itemsRes, framesRes] = await Promise.all([
       supabase.from('reports').select('id, type, mode, note, transcription, ai_summary, foto_url, status, created_at, projects(name, image_url, logo_url), rubros(name, code)').eq('id', id).single<Report>(),
-      supabase.from('pending_items').select('id, description, trade, status, source, image_path').eq('report_id', id).order('created_at'),
+      supabase.from('pending_items').select('id, description, trade, status, source, image_path, frame_id').eq('report_id', id).order('created_at'),
+      supabase.from('report_frames').select('id, timestamp_sec, visual_description, order_index').eq('report_id', id).order('order_index'),
     ]);
 
-    if (reportRes.data) setReport(reportRes.data);
+    const reportData = reportRes.data;
+    if (reportData) setReport(reportData);
 
-    if (itemsRes.data) {
-      setItems(itemsRes.data as PendingItem[]);
-      // Build signed URLs for existing item images
-      const imageMap: Record<string, string> = {};
+    const fetchedItems = (itemsRes.data as PendingItem[]) ?? [];
+    setItems(fetchedItems);
+
+    // Load all frames + signed URLs
+    const fetchedFrames = (framesRes.data as ReportFrame[]) ?? [];
+    if (fetchedFrames.length > 0) {
+      const urlMap: Record<string, string> = {};
       await Promise.all(
-        (itemsRes.data as PendingItem[])
-          .filter((item) => item.image_path)
-          .map(async (item) => {
-            const { data } = await supabase.storage
-              .from('item-images')
-              .createSignedUrl(item.image_path!, 3600);
-            if (data?.signedUrl) imageMap[item.id] = data.signedUrl;
-          })
+        fetchedFrames.map(async (frame) => {
+          const { data } = await supabase.storage
+            .from('report-frames')
+            .createSignedUrl(frame.id + '.jpg', 3600);
+          if (data?.signedUrl) urlMap[frame.id] = data.signedUrl;
+        })
       );
-      setItemImages(imageMap);
+      setFrameUrls(urlMap);
+      setFrames(fetchedFrames.map((f) => ({ ...f, signedUrl: urlMap[f.id] })));
+
+      // Auto-trigger frame matching if mode=video and no items have frame_id yet
+      const hasNoMatches = fetchedItems.every((item) => !item.frame_id);
+      if (reportData?.mode === 'video' && hasNoMatches && fetchedItems.length > 0) {
+        matchFramesToItems();
+      }
     }
 
+    // Build signed URLs for manually uploaded item images
+    const imageMap: Record<string, string> = {};
+    await Promise.all(
+      fetchedItems
+        .filter((item) => item.image_path)
+        .map(async (item) => {
+          const { data } = await supabase.storage
+            .from('item-images')
+            .createSignedUrl(item.image_path!, 3600);
+          if (data?.signedUrl) imageMap[item.id] = data.signedUrl;
+        })
+    );
+    setItemImages(imageMap);
+
     setLoading(false);
+  }
+
+  async function matchFramesToItems() {
+    if (!id || id === 'demo') return;
+    setMatchingFrames(true);
+    try {
+      const { error } = await supabase.functions.invoke('match-frames-to-items', {
+        body: { report_id: id },
+      });
+      if (error) throw error;
+      // Reload items to get updated frame_ids
+      const { data } = await supabase
+        .from('pending_items')
+        .select('id, description, trade, status, source, image_path, frame_id')
+        .eq('report_id', id)
+        .order('created_at');
+      if (data) setItems(data as PendingItem[]);
+    } catch (e: any) {
+      // Silent fail — user can retry manually
+      console.warn('[match-frames]', e.message);
+    } finally {
+      setMatchingFrames(false);
+    }
+  }
+
+  async function handleAssignFrame(itemId: string, frameId: string) {
+    await supabase.from('pending_items').update({ frame_id: frameId }).eq('id', itemId);
+    setItems((prev) => prev.map((item) => item.id === itemId ? { ...item, frame_id: frameId } : item));
+    setFramePickerItemId(null);
+  }
+
+  async function handleRemoveFrame(itemId: string) {
+    await supabase.from('pending_items').update({ frame_id: null }).eq('id', itemId);
+    setItems((prev) => prev.map((item) => item.id === itemId ? { ...item, frame_id: null } : item));
   }
 
   async function handlePickItemImage(itemId: string) {
@@ -259,7 +367,7 @@ export default function InformeScreen() {
     }
   }
 
-  function buildHtml(fotoBase64?: string | null, itemImagesBase64?: Record<string, string>): string {
+  function buildHtml(fotoBase64?: string | null, itemImagesBase64?: Record<string, string>, frameImagesBase64?: Record<string, string>): string {
     if (!report) return '';
     const isOf = report.type === 'oficina';
     const dateStr = formatDate(report.created_at);
@@ -273,10 +381,14 @@ export default function InformeScreen() {
       : (report.foto_url?.startsWith('https://') ? report.foto_url : '');
 
     const itemCards = items.map((item) => {
-      const imgBase64 = itemImagesBase64?.[item.id];
-      const imgHtml = imgBase64
-        ? `<img class="item-img" src="data:image/jpeg;base64,${imgBase64}" />`
-        : '';
+      // Priority: video frame > manual photo
+      const frameBase64 = item.frame_id ? frameImagesBase64?.[item.frame_id] : undefined;
+      const manualBase64 = itemImagesBase64?.[item.id];
+      const imgHtml = frameBase64
+        ? `<img class="item-img" src="data:image/jpeg;base64,${frameBase64}" /><div class="item-img-label">Captura del video</div>`
+        : manualBase64
+          ? `<img class="item-img" src="data:image/jpeg;base64,${manualBase64}" />`
+          : '';
       return `
   <div class="item-card">
     <div class="item-meta">
@@ -322,6 +434,7 @@ export default function InformeScreen() {
   .item-status { font-size: 9px; text-transform: capitalize; color: #AAA; }
   .item-desc { font-size: 12px; color: #12151A; line-height: 1.55; }
   .item-img { width: 100%; max-height: 240px; object-fit: cover; border-radius: 6px; margin-top: 10px; display: block; border: 1px solid #EEE; }
+  .item-img-label { font-size: 8px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
   .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #eee; font-size: 9px; color: #aaa; text-align: center; letter-spacing: 0.5px; text-transform: uppercase; }
 </style>
 </head>
@@ -400,7 +513,7 @@ export default function InformeScreen() {
         } catch { /* skip */ }
       }
 
-      // Download item images as base64
+      // Download manual item images as base64
       const itemImagesBase64: Record<string, string> = {};
       await Promise.all(
         Object.entries(itemImages).map(async ([itemId, uri]) => {
@@ -414,7 +527,24 @@ export default function InformeScreen() {
         })
       );
 
-      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64, itemImagesBase64), base64: false });
+      // Download video frames as base64 (only frames actually used by items)
+      const usedFrameIds = new Set(items.filter((i) => i.frame_id).map((i) => i.frame_id!));
+      const frameImagesBase64: Record<string, string> = {};
+      await Promise.all(
+        [...usedFrameIds].map(async (frameId) => {
+          const uri = frameUrls[frameId];
+          if (!uri) return;
+          try {
+            const tmpPath = `${FileSystem.cacheDirectory}frame_${frameId}_${Date.now()}.jpg`;
+            const dl = await FileSystem.downloadAsync(uri, tmpPath);
+            if (dl.status === 200) {
+              frameImagesBase64[frameId] = await FileSystem.readAsStringAsync(dl.uri, { encoding: FileSystem.EncodingType.Base64 });
+            }
+          } catch { /* skip */ }
+        })
+      );
+
+      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64, itemImagesBase64, frameImagesBase64), base64: false });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Exportar informe' });
     } catch {
       Alert.alert('Error', 'No se pudo generar el PDF.');
@@ -557,9 +687,12 @@ export default function InformeScreen() {
               items={g.items}
               index={i}
               itemImages={itemImages}
+              frameUrls={frameUrls}
               uploadingId={uploadingImageId}
+              matchingFrames={matchingFrames}
               onPickImage={handlePickItemImage}
               onImagePress={setLightboxUri}
+              onReplaceFrame={setFramePickerItemId}
             />
           ))
         )}
@@ -819,6 +952,72 @@ export default function InformeScreen() {
                 </>
             }
           </TouchableOpacity>
+        </View>
+      </BottomSheet>
+
+      {/* ── Frame Picker Sheet ───────────────────────────────────── */}
+      <BottomSheet visible={!!framePickerItemId} onClose={() => setFramePickerItemId(null)}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.sheetHeader}>
+            <View>
+              <Text style={styles.sheetTitle}>Elegir captura</Text>
+              <Text style={styles.sheetSubtitle}>Seleccioná el frame que mejor representa este pendiente</Text>
+            </View>
+            <TouchableOpacity onPress={() => setFramePickerItemId(null)} activeOpacity={0.7}>
+              <Feather name="x" size={18} color={colors.gris} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.framePickerRow}
+          >
+            {/* Option: no frame */}
+            <TouchableOpacity
+              style={styles.framePickerNoFrame}
+              onPress={() => { if (framePickerItemId) handleRemoveFrame(framePickerItemId); }}
+              activeOpacity={0.8}
+            >
+              <Feather name="x-circle" size={20} color={colors.gris} />
+              <Text style={styles.framePickerNoFrameText}>Sin captura</Text>
+            </TouchableOpacity>
+            {frames.map((frame) => {
+              const uri = frameUrls[frame.id];
+              if (!uri) return null;
+              const currentItem = items.find((i) => i.id === framePickerItemId);
+              const isSelected = currentItem?.frame_id === frame.id;
+              return (
+                <TouchableOpacity
+                  key={frame.id}
+                  style={[styles.framePickerThumb, isSelected && styles.framePickerThumbSelected]}
+                  onPress={() => { if (framePickerItemId) handleAssignFrame(framePickerItemId, frame.id); }}
+                  activeOpacity={0.8}
+                >
+                  <Image source={{ uri }} style={styles.framePickerImg} resizeMode="cover" />
+                  <Text style={styles.framePickerSec}>{frame.timestamp_sec}s</Text>
+                  {isSelected && (
+                    <View style={styles.framePickerCheckBadge}>
+                      <Feather name="check" size={12} color="#FFF" />
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          {frames.length > 0 && (
+            <TouchableOpacity
+              style={[styles.sheetBtn, matchingFrames && { opacity: 0.5 }]}
+              onPress={() => { setFramePickerItemId(null); matchFramesToItems(); }}
+              disabled={matchingFrames}
+              activeOpacity={0.85}
+            >
+              {matchingFrames
+                ? <ActivityIndicator color="#FFF" size="small" />
+                : <><Feather name="cpu" size={15} color="#FFF" /><Text style={styles.sheetBtnText}>Re-analizar con IA</Text></>
+              }
+            </TouchableOpacity>
+          )}
         </View>
       </BottomSheet>
 
@@ -1131,6 +1330,40 @@ const styles = StyleSheet.create({
   },
   sheetBtnDisabled: { opacity: 0.35 },
   sheetBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
+
+  // ── Frame matching status ────────────────────────────────────────
+  itemFrameActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  itemFrameBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    height: 20, paddingHorizontal: 7, borderRadius: 10, backgroundColor: colors.chip,
+  },
+  itemFrameBadgeText: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.gris, letterSpacing: 0.3 },
+  itemMatchingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 6 },
+  itemMatchingText: { fontFamily: fonts.archivo.semibold, fontSize: 11, color: colors.faint },
+
+  // ── Frame picker ─────────────────────────────────────────────────
+  framePickerRow: { flexDirection: 'row', gap: 10, paddingVertical: 4 },
+  framePickerNoFrame: {
+    width: 90, height: 64, borderRadius: 10, borderWidth: 1.5, borderColor: colors.border,
+    borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0,
+  },
+  framePickerNoFrameText: { fontFamily: fonts.archivo.bold, fontSize: 9, color: colors.gris },
+  framePickerThumb: {
+    width: 120, height: 80, borderRadius: 10, overflow: 'hidden', flexShrink: 0,
+    borderWidth: 2, borderColor: 'transparent',
+  },
+  framePickerThumbSelected: { borderColor: colors.arena },
+  framePickerImg: { width: '100%', height: '100%' },
+  framePickerSec: {
+    position: 'absolute', bottom: 4, left: 6,
+    fontFamily: fonts.mono.regular, fontSize: 9, color: '#FFF',
+    backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1,
+  },
+  framePickerCheckBadge: {
+    position: 'absolute', top: 4, right: 4,
+    width: 20, height: 20, borderRadius: 10, backgroundColor: colors.arena,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
   // ── Lightbox ─────────────────────────────────────────────────────
   lightboxBg: {
