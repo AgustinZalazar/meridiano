@@ -43,6 +43,7 @@ interface PendingItem {
 
 interface ReportFrame {
   id: string;
+  storage_path: string;
   timestamp_sec: number;
   visual_description: string | null;
   order_index: number;
@@ -239,7 +240,7 @@ export default function InformeScreen() {
     const [reportRes, itemsRes, framesRes] = await Promise.all([
       supabase.from('reports').select('id, type, mode, note, transcription, ai_summary, foto_url, status, created_at, projects(name, image_url, logo_url), rubros(name, code)').eq('id', id).single<Report>(),
       supabase.from('pending_items').select('id, description, trade, status, source, image_path, frame_id').eq('report_id', id).order('created_at'),
-      supabase.from('report_frames').select('id, timestamp_sec, visual_description, order_index').eq('report_id', id).order('order_index'),
+      supabase.from('report_frames').select('id, storage_path, timestamp_sec, visual_description, order_index').eq('report_id', id).order('order_index'),
     ]);
 
     const reportData = reportRes.data;
@@ -256,7 +257,7 @@ export default function InformeScreen() {
         fetchedFrames.map(async (frame) => {
           const { data } = await supabase.storage
             .from('report-frames')
-            .createSignedUrl(frame.id + '.jpg', 3600);
+            .createSignedUrl(frame.storage_path, 3600);
           if (data?.signedUrl) urlMap[frame.id] = data.signedUrl;
         })
       );
