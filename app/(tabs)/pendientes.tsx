@@ -136,13 +136,13 @@ export default function PendientesScreen() {
   const [items, setItems] = useState<DbPending[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterVisible, setFilterVisible] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<PendingStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<PendingStatus | 'all' | 'active'>('active');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'ai' | 'manual'>('all');
 
-  const hasActiveFilters = statusFilter !== 'all' || sourceFilter !== 'all';
+  const hasActiveFilters = statusFilter !== 'active' || sourceFilter !== 'all';
 
   function resetFilters() {
-    setStatusFilter('all');
+    setStatusFilter('active');
     setSourceFilter('all');
   }
 
@@ -161,7 +161,8 @@ export default function PendientesScreen() {
   const filtered = items.filter((p) => {
     const type = p.reports?.type;
     if (type && type !== activeType) return false;
-    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+    if (statusFilter === 'active' && p.status === 'resuelto') return false;
+    if (statusFilter !== 'all' && statusFilter !== 'active' && p.status !== statusFilter) return false;
     if (sourceFilter !== 'all' && p.source !== sourceFilter) return false;
     return true;
   });
@@ -229,7 +230,7 @@ export default function PendientesScreen() {
 
           <Text style={styles.sheetGroupLabel}>ESTADO</Text>
           <View style={styles.chipRow}>
-            {([['all', 'Todos'], ['pendiente', 'Pendiente'], ['en_revision', 'En revisión'], ['resuelto', 'Resuelto']] as const).map(([val, label]) => (
+            {([['active', 'Activos'], ['pendiente', 'Pendiente'], ['en_revision', 'En revisión'], ['resuelto', 'Resuelto'], ['all', 'Todos']] as const).map(([val, label]) => (
               <TouchableOpacity
                 key={val}
                 style={[styles.filterChip, statusFilter === val && styles.filterChipActive]}
