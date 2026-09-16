@@ -21,6 +21,7 @@ function GridBackground() {
     </View>
   );
 }
+import { LinearGradient } from 'expo-linear-gradient';
 import { SlidingTabs } from '../../components/SlidingTabs';
 
 const LOGO_SRC = require('../../assets/icon.png');
@@ -42,6 +43,43 @@ const PROPERTY_ICON: Record<PropertyType, string> = {
   nave_industrial: 'package',
   otro:            'map-pin',
 };
+
+const PROPERTY_PALETTE: Record<PropertyType, { grad: [string, string]; tint: string; ring: string }> = {
+  edificio:        { grad: ['#EDE8DF', '#E0D8CB'], tint: '#7A6A52', ring: 'rgba(122,106,82,0.10)'  },
+  casa:            { grad: ['#E8EDE8', '#D9E3D9'], tint: '#5A7060', ring: 'rgba(90,112,96,0.10)'   },
+  local_comercial: { grad: ['#E6EAED', '#D8DFE4'], tint: '#556470', ring: 'rgba(85,100,112,0.10)'  },
+  oficina:         { grad: ['#ECE8EE', '#E0D9E4'], tint: '#6E5F7A', ring: 'rgba(110,95,122,0.10)'  },
+  nave_industrial: { grad: ['#E6E8E8', '#D8DCDC'], tint: '#5A6264', ring: 'rgba(90,98,100,0.10)'   },
+  otro:            { grad: ['#EFEBE2', '#E4DDD0'], tint: '#6B6A65', ring: 'rgba(107,106,101,0.10)' },
+};
+
+function ProjectLogoFallback({ propertyType }: { propertyType: PropertyType | null }) {
+  const type = propertyType ?? 'otro';
+  const { grad, tint, ring } = PROPERTY_PALETTE[type];
+  const icon = PROPERTY_ICON[type] as any;
+
+  return (
+    <LinearGradient
+      colors={grad}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.cardImageFallback}
+    >
+      {/* subtle grid */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        {[16, 32, 48].map((v) => (
+          <View key={`h${v}`} style={{ position: 'absolute', left: 0, right: 0, top: v, height: StyleSheet.hairlineWidth, backgroundColor: tint, opacity: 0.12 }} />
+        ))}
+        {[16, 32, 48].map((v) => (
+          <View key={`v${v}`} style={{ position: 'absolute', top: 0, bottom: 0, left: v, width: StyleSheet.hairlineWidth, backgroundColor: tint, opacity: 0.12 }} />
+        ))}
+      </View>
+      <View style={[styles.fallbackRing, { backgroundColor: ring }]}>
+        <Feather name={icon} size={24} color={tint} />
+      </View>
+    </LinearGradient>
+  );
+}
 
 interface DbProject {
   id: string;
@@ -143,13 +181,7 @@ function ProjectCard({ project, onPress, index }: { project: DbProject; onPress:
           {project.logo_url ? (
             <Image source={{ uri: project.logo_url }} style={styles.cardImage} resizeMode="contain" />
           ) : (
-            <View style={styles.cardImageFallback}>
-              <Feather
-                name={(PROPERTY_ICON[project.property_type ?? 'otro'] ?? 'map-pin') as any}
-                size={26}
-                color={colors.gris}
-              />
-            </View>
+            <ProjectLogoFallback propertyType={project.property_type} />
           )}
         </View>
         <View style={styles.cardBody}>
@@ -474,7 +506,13 @@ const styles = StyleSheet.create({
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.chip,
+  },
+  fallbackRing: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardBody: {
     flex: 1,

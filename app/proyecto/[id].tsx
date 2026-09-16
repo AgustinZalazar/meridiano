@@ -722,7 +722,6 @@ export default function ProyectoScreen() {
           ListHeaderComponent={
             <View style={styles.pendFiltersWrap}>
               <View style={styles.pendFilterTopRow}>
-                <Text style={styles.pendFilterCount}>{filteredPendientes.length} resultado{filteredPendientes.length !== 1 ? 's' : ''}</Text>
                 {(() => {
                   const hasFilter = pendStatusFilter !== 'active' || pendType !== 'contratistas' || !!pendRubroFilter;
                   return (
@@ -733,6 +732,7 @@ export default function ProyectoScreen() {
                     </TouchableOpacity>
                   );
                 })()}
+                <Text style={styles.pendFilterCount}>{filteredPendientes.length} resultado{filteredPendientes.length !== 1 ? 's' : ''}</Text>
               </View>
             </View>
           }
@@ -1143,7 +1143,7 @@ const styles = StyleSheet.create({
 
   // Pendientes filters
   pendFiltersWrap: { gap: 8, marginBottom: 6 },
-  pendFilterTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xl },
+  pendFilterTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md + 4 },
   pendFilterCount: { fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 0.5, color: colors.gris, textTransform: 'uppercase' },
   pendFilterBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,

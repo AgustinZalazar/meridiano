@@ -507,24 +507,27 @@ export default function NuevaGrabacionScreen() {
         {/* Report type */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>TIPO DE INFORME</Text>
-          <View style={s.optionsList}>
+          <View style={s.typeGrid}>
             {([
-              { key: 'contratistas', label: 'Informe contratistas', sub: 'Para los gremios en obra' },
-              { key: 'oficina',      label: 'Observación oficina técnica', sub: 'Para el equipo de proyecto' },
-            ] as { key: ReportType; label: string; sub: string }[]).map((t) => (
-              <TouchableOpacity
-                key={t.key}
-                style={[s.option, reportType === t.key && s.optionSelected]}
-                onPress={() => setReportType(t.key)}
-                activeOpacity={0.8}
-              >
-                <View style={[s.optionDot, reportType === t.key && s.optionDotActive]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[s.optionText, reportType === t.key && s.optionTextActive]}>{t.label}</Text>
-                  <Text style={s.optionSub}>{t.sub}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
+              { key: 'contratistas', label: 'Contratistas',    sub: 'Para los gremios\nen obra',          icon: 'tool'      },
+              { key: 'oficina',      label: 'Oficina técnica', sub: 'Para el equipo\nde proyecto',        icon: 'clipboard' },
+            ] as { key: ReportType; label: string; sub: string; icon: string }[]).map((t) => {
+              const active = reportType === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[s.typeCard, active && s.typeCardSelected]}
+                  onPress={() => setReportType(t.key)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[s.typeIconWrap, active && s.typeIconWrapSelected]}>
+                    <Feather name={t.icon as any} size={18} color={active ? colors.arena : colors.gris} />
+                  </View>
+                  <Text style={[s.typeLabel, active && s.typeLabelSelected]}>{t.label}</Text>
+                  <Text style={s.typeSub}>{t.sub}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -713,21 +716,24 @@ const s = StyleSheet.create({
   createRowText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.arena },
 
   // Report type
-  optionsList: {
-    borderRadius: 20, backgroundColor: colors.panel, overflow: 'hidden',
-    shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 14, elevation: 2,
+  typeGrid: { flexDirection: 'row', gap: 12 },
+  typeCard: {
+    flex: 1, borderRadius: 20, backgroundColor: colors.panel,
+    padding: spacing.md, gap: 8,
+    borderWidth: 1.5, borderColor: colors.border,
   },
-  option: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+  typeCardSelected: {
+    backgroundColor: 'rgba(217,119,87,0.04)',
+    borderColor: colors.arena,
   },
-  optionSelected: { backgroundColor: 'rgba(217,119,87,0.07)', borderLeftWidth: 3, borderLeftColor: colors.arena },
-  optionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.faint },
-  optionDotActive: { backgroundColor: colors.arena },
-  optionText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.crema },
-  optionTextActive: { fontFamily: fonts.archivo.bold, color: colors.crema },
-  optionSub: { fontFamily: fonts.archivo.semibold, fontSize: 11.5, color: colors.gris, marginTop: 1 },
+  typeIconWrap: {
+    width: 42, height: 42, borderRadius: 14,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+  },
+  typeIconWrapSelected: { backgroundColor: 'rgba(217,119,87,0.12)' },
+  typeLabel: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, letterSpacing: -0.2 },
+  typeLabelSelected: { color: colors.arena },
+  typeSub: { fontFamily: fonts.archivo.semibold, fontSize: 11.5, color: colors.gris, lineHeight: 16 },
 
   noteField: { borderBottomWidth: 1.5, borderBottomColor: colors.border, paddingBottom: spacing.sm },
   noteInput: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.crema, minHeight: 60 },

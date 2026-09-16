@@ -165,7 +165,9 @@ export default function EditarFotoScreen() {
 
   const photoResponder = {
     onStartShouldSetResponderCapture: () => toolRef.current === 'dibujo',
+    onMoveShouldSetResponderCapture: () => toolRef.current === 'dibujo',
     onStartShouldSetResponder: () => true,
+    onMoveShouldSetResponder: () => toolRef.current === 'dibujo',
 
     onResponderGrant: (e: any) => {
       const { locationX, locationY } = e.nativeEvent;
@@ -307,7 +309,12 @@ export default function EditarFotoScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          scrollEnabled={tool !== 'dibujo'}
+        >
 
           {/* Photo + annotations */}
           <View style={styles.photoWrapOuter}>
