@@ -31,12 +31,23 @@ import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useProfile } from '../../lib/use-profile';
 import { useStudio } from '../../lib/use-studio';
-import { ProjectPlaceholder } from '../../components/ProjectPlaceholder';
+
+type PropertyType = 'edificio' | 'casa' | 'local_comercial' | 'oficina' | 'nave_industrial' | 'otro';
+
+const PROPERTY_ICON: Record<PropertyType, string> = {
+  edificio:        'layers',
+  casa:            'home',
+  local_comercial: 'shopping-bag',
+  oficina:         'briefcase',
+  nave_industrial: 'package',
+  otro:            'map-pin',
+};
 
 interface DbProject {
   id: string;
   name: string;
-  image_url: string | null;
+  logo_url: string | null;
+  property_type: PropertyType | null;
   rubros: { id: string; status: string }[];
 }
 
@@ -129,10 +140,17 @@ function ProjectCard({ project, onPress, index }: { project: DbProject; onPress:
     }}>
       <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
         <View style={styles.cardImageSlot}>
-          {project.image_url
-            ? <Image source={{ uri: project.image_url }} style={styles.cardImage} />
-            : <ProjectPlaceholder variant="card" />
-          }
+          {project.logo_url ? (
+            <Image source={{ uri: project.logo_url }} style={styles.cardImage} resizeMode="contain" />
+          ) : (
+            <View style={styles.cardImageFallback}>
+              <Feather
+                name={(PROPERTY_ICON[project.property_type ?? 'otro'] ?? 'map-pin') as any}
+                size={26}
+                color={colors.gris}
+              />
+            </View>
+          )}
         </View>
         <View style={styles.cardBody}>
           <Text style={styles.cardName}>{project.name}</Text>
@@ -187,7 +205,7 @@ export default function ProyectosScreen() {
     setLoading(true);
     supabase
       .from('projects')
-      .select('id, name, image_url, rubros(id, status)')
+      .select('id, name, logo_url, property_type, rubros(id, status)')
       .then(({ data }) => {
         setProjects((data as DbProject[]) ?? []);
         setLoading(false);
@@ -451,7 +469,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  cardImagePlaceholder: {
+  cardImageFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.chip,
   },
   cardBody: {
