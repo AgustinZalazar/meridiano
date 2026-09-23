@@ -307,10 +307,11 @@ function ItemChipRow({ chip, scan }: { chip: typeof ITEM_CHIPS[0]; scan: Animate
 
 export default function ProcesandoScreen() {
   const router = useRouter();
-  const { mode, type, videoUri, projectId, rubroId, note, fotoUrl, markersJson, comment } = useLocalSearchParams<{
+  const { mode, type, videoUri, projectId, rubroId, note, fotoUrl, markersJson, comment, location } = useLocalSearchParams<{
     mode?: string; type?: string; videoUri?: string;
     projectId?: string; rubroId?: string; note?: string;
     fotoUrl?: string; markersJson?: string; comment?: string;
+    location?: string;
   }>();
   const { studio, loading: studioLoading } = useStudio();
 
@@ -363,6 +364,7 @@ export default function ProcesandoScreen() {
             foto_url: fotoUrl,
             markers,
             comment: comment || null,
+            location: location || null,
           },
         });
         if (error) throw new Error(error.message ?? 'Error al analizar la foto');
@@ -442,6 +444,7 @@ export default function ProcesandoScreen() {
             type:       type ?? 'contratistas',
             mode:       'video',
             note:       note || null,
+            location:   location || null,
             status:     'processing',
             video_path: path,
           })

@@ -16,11 +16,15 @@ import { supabase } from '../lib/supabase';
 type Mode = 'video' | 'foto';
 type ReportType = 'contratistas' | 'oficina';
 
+type PropertyType = 'edificio' | 'casa' | 'local_comercial' | 'oficina' | 'nave_industrial' | 'otro';
+
 interface DbProject {
   id: string;
   name: string;
   image_url: string | null;
   rubros: { status: string }[];
+  property_type: PropertyType | null;
+  pisos: number | null;
 }
 
 // ─── ProjectPickerSheet ───────────────────────────────────────────────────────
@@ -275,15 +279,18 @@ export default function NuevaGrabacionScreen() {
   const [note, setNote]     = useState('');
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [locationFloor, setLocationFloor] = useState<string | null>(null);
+  const [locationUnit, setLocationUnit]   = useState('');
 
   const [dbProjects, setDbProjects] = useState<DbProject[]>([]);
   const [dbRubros, setDbRubros]     = useState<{ id: string; name: string }[]>([]);
   const [projectSheetOpen, setProjectSheetOpen] = useState(false);
+  const [floorSheetOpen, setFloorSheetOpen]     = useState(false);
 
   useEffect(() => {
     supabase
       .from('projects')
-      .select('id, name, image_url, rubros(status)')
+      .select('id, name, image_url, rubros(status), property_type, pisos')
       .then(({ data }) => setDbProjects((data ?? []) as DbProject[]));
   }, []);
 
@@ -293,8 +300,38 @@ export default function NuevaGrabacionScreen() {
       .then(({ data }) => setDbRubros(data ?? []));
   }, [selectedProjectId]);
 
-  const selectedProjectName = dbProjects.find((p) => p.id === selectedProjectId)?.name ?? null;
-  const rubroNames = dbRubros.map((r) => r.name);
+  const selectedProject     = dbProjects.find((p) => p.id === selectedProjectId) ?? null;
+  const selectedProjectName = selectedProject?.name ?? null;
+  const rubroNames          = dbRubros.map((r) => r.name);
+
+  const propertyType = selectedProject?.property_type ?? null;
+  const pisos        = selectedProject?.pisos ?? null;
+
+  // Floor options: PB + 1°..pisos°
+  const floorOptions: string[] | null = pisos
+    ? ['PB', ...Array.from({ length: pisos }, (_, i) => `${i + 1}°`)]
+    : null;
+
+  // Location labels by property type
+  const locationConfig: Record<PropertyType, { sectionLabel: string; floorLabel: string; unitLabel: string; unitPlaceholder: string; hasUnit: boolean }> = {
+    edificio:        { sectionLabel: 'PISO Y UNIDAD',   floorLabel: 'PISO',  unitLabel: 'DEPTO / UF',  unitPlaceholder: 'Ej. 4B',      hasUnit: true  },
+    local_comercial: { sectionLabel: 'PISO Y LOCAL',    floorLabel: 'PISO',  unitLabel: 'LOCAL N°',    unitPlaceholder: 'Ej. 12',      hasUnit: true  },
+    oficina:         { sectionLabel: 'PISO Y OFICINA',  floorLabel: 'PISO',  unitLabel: 'OFICINA N°',  unitPlaceholder: 'Ej. 204',     hasUnit: true  },
+    nave_industrial: { sectionLabel: 'SECTOR',          floorLabel: 'SECTOR',unitLabel: 'MÓDULO',      unitPlaceholder: 'Ej. Módulo A',hasUnit: true  },
+    casa:            { sectionLabel: 'SECTOR / ZONA',   floorLabel: 'ZONA',  unitLabel: '',            unitPlaceholder: '',            hasUnit: false },
+    otro:            { sectionLabel: 'SECTOR / ZONA',   floorLabel: 'ZONA',  unitLabel: '',            unitPlaceholder: '',            hasUnit: false },
+  };
+
+  const locCfg = propertyType ? locationConfig[propertyType] : null;
+  // For nave/casa/otro, the "floor" is actually a free-text sector — no floor options list
+  const isFloorType = propertyType === 'edificio' || propertyType === 'local_comercial' || propertyType === 'oficina';
+
+  function buildLocation(): string | null {
+    const parts: string[] = [];
+    if (locationFloor?.trim()) parts.push(isFloorType ? `Piso ${locationFloor}` : locationFloor.trim());
+    if (locationUnit.trim()) parts.push(locationUnit.trim());
+    return parts.length > 0 ? parts.join(' · ') : null;
+  }
 
   const canContinue = selectedProjectId && selectedRubro && (
     mode === 'video' ? videoUri !== null : photoUri !== null
@@ -304,6 +341,8 @@ export default function NuevaGrabacionScreen() {
     setSelectedProjectId(id);
     setSelectedRubro(null);
     setSelectedRubroId(null);
+    setLocationFloor(null);
+    setLocationUnit('');
   }
 
   function handleSelectRubro(name: string) {
@@ -362,6 +401,7 @@ export default function NuevaGrabacionScreen() {
   }
 
   function handleContinue() {
+    const location = buildLocation() ?? '';
     if (mode === 'foto' && photoUri) {
       router.push({
         pathname: '/editar-foto',
@@ -371,6 +411,7 @@ export default function NuevaGrabacionScreen() {
           rubro: selectedRubro ?? '',
           rubroId: selectedRubroId ?? '',
           type: reportType,
+          location,
         },
       });
     } else if (videoUri) {
@@ -383,6 +424,7 @@ export default function NuevaGrabacionScreen() {
           projectId: selectedProjectId ?? '',
           rubroId: selectedRubroId ?? '',
           note: note.trim(),
+          location,
         },
       });
     }
@@ -502,6 +544,102 @@ export default function NuevaGrabacionScreen() {
             onSelect={handleSelectRubro}
             disabled={!selectedProjectId}
           />
+        )}
+
+        {/* Location fields — shown when project has a property_type */}
+        {locCfg && (
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>{locCfg.sectionLabel}</Text>
+
+            {/* Floor / Sector */}
+            {isFloorType ? (
+              floorOptions ? (
+                // Picker sheet for known number of floors
+                <>
+                  <TouchableOpacity
+                    style={s.pickerField}
+                    onPress={() => setFloorSheetOpen(true)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={locationFloor ? s.pickerValue : s.pickerPlaceholder} numberOfLines={1}>
+                      {locationFloor ?? 'Seleccionar piso…'}
+                    </Text>
+                    <Feather name="chevron-down" size={16} color={colors.gris} />
+                  </TouchableOpacity>
+                  <BottomSheet visible={floorSheetOpen} onClose={() => setFloorSheetOpen(false)}>
+                    <View style={[s.sheet, { paddingBottom: 32 }]}>
+                      <View style={s.handle} />
+                      <View style={s.sheetHeader}>
+                        <Text style={s.sheetTitle}>{locCfg.floorLabel}</Text>
+                        <TouchableOpacity onPress={() => setFloorSheetOpen(false)} hitSlop={12}>
+                          <Feather name="x" size={18} color={colors.gris} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 20, paddingBottom: 8 }}>
+                        {floorOptions.map((opt) => {
+                          const sel = locationFloor === opt;
+                          return (
+                            <TouchableOpacity
+                              key={opt}
+                              style={[s.floorChip, sel && s.floorChipSelected]}
+                              onPress={() => { setLocationFloor(opt); setFloorSheetOpen(false); }}
+                              activeOpacity={0.75}
+                            >
+                              <Text style={[s.floorChipText, sel && s.floorChipTextSelected]}>{opt}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </BottomSheet>
+                </>
+              ) : (
+                // Text input for unknown number of floors
+                <View style={s.pickerField}>
+                  <TextInput
+                    style={[s.pickerValue, { flex: 1 }]}
+                    value={locationFloor ?? ''}
+                    onChangeText={setLocationFloor}
+                    placeholder="Ej. 3° / PB"
+                    placeholderTextColor={colors.faint}
+                    selectionColor={colors.arena}
+                  />
+                </View>
+              )
+            ) : (
+              // Sector / Zona free text
+              <View style={s.pickerField}>
+                <TextInput
+                  style={[s.pickerValue, { flex: 1 }]}
+                  value={locationFloor ?? ''}
+                  onChangeText={setLocationFloor}
+                  placeholder={propertyType === 'nave_industrial' ? 'Ej. Sector A' : 'Ej. Jardín / Primer piso'}
+                  placeholderTextColor={colors.faint}
+                  selectionColor={colors.arena}
+                />
+              </View>
+            )}
+
+            {/* Unit / Depto / Módulo */}
+            {locCfg.hasUnit && (
+              <View style={[s.pickerField, { marginTop: 8 }]}>
+                <TextInput
+                  style={[s.pickerValue, { flex: 1 }]}
+                  value={locationUnit}
+                  onChangeText={setLocationUnit}
+                  placeholder={locCfg.unitPlaceholder}
+                  placeholderTextColor={colors.faint}
+                  selectionColor={colors.arena}
+                  autoCapitalize="characters"
+                />
+                {locationUnit.length > 0 && (
+                  <TouchableOpacity onPress={() => setLocationUnit('')} hitSlop={8}>
+                    <Feather name="x" size={14} color={colors.faint} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
         )}
 
         {/* Report type */}
@@ -714,6 +852,16 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing.xl, paddingVertical: 16,
   },
   createRowText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.arena },
+
+  // Floor chips
+  floorChip: {
+    height: 38, minWidth: 48, paddingHorizontal: 14, borderRadius: 12,
+    backgroundColor: colors.panel, borderWidth: 1.5, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  floorChipSelected: { backgroundColor: 'rgba(217,119,87,0.08)', borderColor: colors.arena },
+  floorChipText: { fontFamily: fonts.archivo.bold, fontSize: 13.5, color: colors.gris },
+  floorChipTextSelected: { color: colors.arena },
 
   // Report type
   typeGrid: { flexDirection: 'row', gap: 12 },
