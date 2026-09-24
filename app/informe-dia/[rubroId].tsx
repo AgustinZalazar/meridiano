@@ -22,12 +22,11 @@ interface DailyReport {
   status: string;
 }
 
-interface ReportItem {
+interface ReportMedia {
   id: string;
-  mode: 'video' | 'foto';
-  type: ReportType;
-  status: string;
-  location: string | null;
+  type: 'foto' | 'video';
+  uri: string | null;
+  note: string | null;
   created_at: string;
 }
 
@@ -58,7 +57,7 @@ export default function InformeDiaScreen() {
 
   const [loading, setLoading]         = useState(true);
   const [openReport, setOpenReport]   = useState<DailyReport | null>(null);
-  const [media, setMedia]             = useState<ReportItem[]>([]);
+  const [media, setMedia]             = useState<ReportMedia[]>([]);
   const [reportType, setReportType]   = useState<ReportType>('contratistas');
   const [starting, setStarting]       = useState(false);
   const [closing, setClosing]         = useState(false);
@@ -79,14 +78,12 @@ export default function InformeDiaScreen() {
 
         if (report) {
           supabase
-            .from('reports')
-            .select('id, mode, type, status, location, created_at')
-            .eq('rubro_id', rubroId)
-            .eq('date', todayIso())
-            .neq('status', 'abierto')
+            .from('report_media')
+            .select('id, type, uri, note, created_at')
+            .eq('report_id', report.id)
             .order('created_at')
             .then(({ data }) => {
-              setMedia((data as ReportItem[]) ?? []);
+              setMedia((data as ReportMedia[]) ?? []);
               setLoading(false);
             });
         } else {
@@ -248,17 +245,12 @@ export default function InformeDiaScreen() {
         renderItem={({ item }) => (
           <View style={s.mediaCard}>
             <View style={s.mediaIcon}>
-              <Feather name={item.mode === 'foto' ? 'image' : 'video'} size={20} color={colors.gris} />
+              <Feather name={item.type === 'foto' ? 'image' : 'video'} size={20} color={colors.gris} />
             </View>
             <View style={s.mediaBody}>
-              <Text style={s.mediaType}>{item.mode === 'foto' ? 'Foto' : 'Video'}</Text>
-              {item.location ? <Text style={s.mediaNote} numberOfLines={1}>{item.location}</Text> : null}
+              <Text style={s.mediaType}>{item.type === 'foto' ? 'Foto' : 'Video'}</Text>
+              {item.note ? <Text style={s.mediaNote} numberOfLines={2}>{item.note}</Text> : null}
               <Text style={s.mediaTime}>{fmtTime(item.created_at)}</Text>
-            </View>
-            <View style={[s.statusChip, item.status === 'completed' && s.statusChipDone]}>
-              <Text style={[s.statusChipText, item.status === 'completed' && s.statusChipTextDone]}>
-                {item.status === 'completed' ? 'Listo' : 'Procesando'}
-              </Text>
             </View>
           </View>
         )}
@@ -275,14 +267,8 @@ export default function InformeDiaScreen() {
       <TouchableOpacity
         style={[s.fab, { bottom: insets.bottom + 28 }]}
         onPress={() => router.push({
-          pathname: '/nueva-grabacion',
-          params: {
-            projectId:          projectId   ?? '',
-            projectName:        params.projectName ?? '',
-            rubroId:            rubroId     ?? '',
-            rubroName:          rubroName   ?? '',
-            returnToInformeDia: 'true',
-          },
+          pathname: '/informe-dia/agregar',
+          params: { reportId: openReport.id, rubroName: rubroName ?? '' },
         })}
         activeOpacity={0.85}
       >
@@ -335,7 +321,6 @@ const s = StyleSheet.create({
 
   mediaCard: {
     flexDirection: 'row', gap: 12, backgroundColor: colors.panel, borderRadius: 16, padding: 14,
-    alignItems: 'center',
   },
   mediaIcon: {
     width: 48, height: 48, borderRadius: 12, backgroundColor: colors.chip,
@@ -345,13 +330,6 @@ const s = StyleSheet.create({
   mediaType: { fontFamily: fonts.archivo.bold, fontSize: 13.5, color: colors.crema },
   mediaNote: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.gris, lineHeight: 17 },
   mediaTime: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.faint, letterSpacing: 0.3 },
-  statusChip: {
-    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 10,
-    backgroundColor: colors.chip,
-  },
-  statusChipDone: { backgroundColor: 'rgba(74,124,89,0.15)' },
-  statusChipText: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3 },
-  statusChipTextDone: { color: colors.success },
 
   emptyMedia: { alignItems: 'center', gap: 10, paddingTop: 60, paddingHorizontal: spacing.xl },
   emptyMediaText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: colors.gris },

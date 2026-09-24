@@ -8,8 +8,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
+import { useStudio } from '../../lib/use-studio';
 
 type MediaMode = 'foto' | 'video';
 
@@ -17,15 +19,17 @@ export default function AgregarMediaScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ reportId: string; rubroName: string }>();
+  const { studio, loading: studioLoading } = useStudio();
 
   const reportId = Array.isArray(params.reportId) ? params.reportId[0] : params.reportId;
   const rubroName = Array.isArray(params.rubroName) ? params.rubroName[0] : params.rubroName;
 
-  const [mode, setMode]       = useState<MediaMode>('foto');
-  const [uri, setUri]         = useState<string | null>(null);
+  const [mode, setMode]         = useState<MediaMode>('foto');
+  const [uri, setUri]           = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
-  const [note, setNote]       = useState('');
-  const [saving, setSaving]   = useState(false);
+  const [note, setNote]         = useState('');
+  const [saving, setSaving]     = useState(false);
+  const [uploadLabel, setUploadLabel] = useState('Subiendo…');
 
   async function handlePickGallery() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -67,15 +71,70 @@ export default function AgregarMediaScreen() {
   }
 
   async function handleSave() {
-    if (!reportId) return;
+    if (!reportId || !uri || !studio) return;
     setSaving(true);
+
+    let storageUrl: string | null = null;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Sin sesión activa');
+
+      const ALLOWED_IMG_EXTS  = ['jpg', 'jpeg', 'png', 'heic', 'webp'];
+      const ALLOWED_VID_EXTS  = ['mp4', 'mov', 'avi', 'mkv', '3gp', 'webm'];
+      const allowedExts = mode === 'foto' ? ALLOWED_IMG_EXTS : ALLOWED_VID_EXTS;
+      const defaultExt  = mode === 'foto' ? 'jpg' : 'mp4';
+      const rawExt      = uri.split('.').pop()?.toLowerCase() ?? '';
+      const ext         = allowedExts.includes(rawExt) ? rawExt : defaultExt;
+
+      // Copy to cache (handles content:// URIs on Android)
+      const cacheDir  = `${FileSystem.cacheDirectory ?? ''}daily_uploads/`;
+      await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+      const localPath = `${cacheDir}${Date.now()}.${ext}`;
+      await FileSystem.copyAsync({ from: uri, to: localPath });
+
+      const storagePath = `daily/${studio.id}/${reportId}/${Date.now()}.${ext}`;
+      const uploadUrl   = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${storagePath}`;
+      const contentType = mode === 'foto'
+        ? `image/${ext === 'jpg' ? 'jpeg' : ext}`
+        : `video/${ext}`;
+
+      setUploadLabel(mode === 'foto' ? 'Subiendo foto…' : 'Subiendo video…');
+
+      const uploadTask = FileSystem.createUploadTask(
+        uploadUrl, localPath,
+        {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': contentType,
+            'x-upsert': 'true',
+          },
+        },
+      );
+
+      const result = await uploadTask.uploadAsync();
+      FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
+
+      if (!result || result.status >= 300)
+        throw new Error('No se pudo subir el archivo. Verificá tu conexión.');
+
+      storageUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${storagePath}`;
+    } catch (e: any) {
+      setSaving(false);
+      Alert.alert('Error al subir', e.message ?? 'Ocurrió un error inesperado.');
+      return;
+    }
+
+    setUploadLabel('Guardando…');
 
     const { error } = await supabase
       .from('report_media')
       .insert({
         report_id: reportId,
         type:      mode,
-        uri:       uri ?? null,
+        uri:       storageUrl,
         note:      note.trim() || null,
       });
 
@@ -88,7 +147,7 @@ export default function AgregarMediaScreen() {
     router.back();
   }
 
-  const canSave = !!uri && !saving;
+  const canSave = !!uri && !saving && !studioLoading && !!studio;
 
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>
@@ -188,7 +247,7 @@ export default function AgregarMediaScreen() {
             activeOpacity={0.85}
           >
             {saving
-              ? <ActivityIndicator color="#FFF" size="small" />
+              ? <><ActivityIndicator color="#FFF" size="small" /><Text style={s.saveBtnText}>{uploadLabel}</Text></>
               : <>
                   <Feather name="plus-circle" size={16} color="#FFF" />
                   <Text style={s.saveBtnText}>Agregar al informe</Text>
