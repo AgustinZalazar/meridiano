@@ -262,25 +262,47 @@ function RubroCard({ rubro, pendientes, index, onEdit, onGrabacion, onInformeDia
   );
 }
 
-function PendienteCard({ item, rubroName, index, onPress }: { item: DbPendingItem; rubroName: string; index: number; onPress: () => void }) {
-  const statusColor = PENDING_STATUS_COLOR[item.status];
-  const anim = useRef(new Animated.Value(0)).current;
+function PendienteCard({ item, rubroName, index, onPress, onComplete }: {
+  item: DbPendingItem;
+  rubroName: string;
+  index: number;
+  onPress: () => void;
+  onComplete: () => void;
+}) {
+  const statusColor  = PENDING_STATUS_COLOR[item.status];
+  const enterAnim    = useRef(new Animated.Value(0)).current;
+  const dismissAnim  = useRef(new Animated.Value(1)).current;
+  const [dismissing, setDismissing] = useState(false);
+
   useEffect(() => {
     Animated.sequence([
       Animated.delay(index * 65),
-      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(enterAnim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
   }, []);
 
+  function handleComplete() {
+    setDismissing(true);
+    Animated.timing(dismissAnim, {
+      toValue: 0,
+      duration: 550,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => onComplete());
+  }
+
   return (
     <Animated.View style={{
-      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      opacity: Animated.multiply(
+        enterAnim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+        dismissAnim,
+      ),
       transform: [
-        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
-        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+        { translateY: enterAnim.interpolate({ inputRange: [0, 1], outputRange: [28, 0] }) },
+        { scale: enterAnim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
       ],
     }}>
-    <TouchableOpacity style={styles.pendCard} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity style={[styles.pendCard, dismissing && { elevation: 0, shadowOpacity: 0 }]} onPress={onPress} activeOpacity={0.85}>
       {/* Top row: status dot + label + date */}
       <View style={styles.pendTopRow}>
         <View style={styles.pendStatusRow}>
@@ -293,14 +315,27 @@ function PendienteCard({ item, rubroName, index, onPress }: { item: DbPendingIte
       </View>
       {/* Description */}
       <Text style={styles.pendDesc} numberOfLines={2}>{item.description}</Text>
-      {/* Footer: rubro + trade chip */}
+      {/* Footer: rubro + trade chip + complete button */}
       <View style={styles.pendCardFooter}>
         <Text style={styles.pendObra} numberOfLines={1}>{rubroName}</Text>
-        {item.trade ? (
-          <View style={styles.tradeChip}>
-            <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
-          </View>
-        ) : null}
+        <View style={styles.pendCardActions}>
+          {item.trade ? (
+            <View style={styles.tradeChip}>
+              <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
+            </View>
+          ) : null}
+          {item.status !== 'resuelto' && (
+            <TouchableOpacity
+              style={styles.pendCompleteBtn}
+              onPress={(e) => { e.stopPropagation(); handleComplete(); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.7}
+            >
+              <Feather name="check" size={13} color={colors.success} />
+              <Text style={styles.pendCompleteBtnText}>Completar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
     </Animated.View>
@@ -553,6 +588,11 @@ export default function ProyectoScreen() {
 
   const openPendingCount = pendingItems.filter((p) => p.status === 'pendiente').length;
 
+  async function handleCompletePending(id: string) {
+    setPendingItems((prev) => prev.filter((p) => p.id !== id));
+    await supabase.from('pending_items').update({ status: 'resuelto' }).eq('id', id);
+  }
+
   if (loading) {
     return (
       <View style={styles.safe}>
@@ -715,6 +755,7 @@ export default function ProyectoScreen() {
               index={index}
               rubroName={rubroById[item.rubro_id]?.name ?? '—'}
               onPress={() => router.push(`/pendiente/${item.id}`)}
+              onComplete={() => handleCompletePending(item.id)}
             />
           )}
           contentContainerStyle={styles.listContent}
@@ -1131,11 +1172,18 @@ const styles = StyleSheet.create({
   pendDesc: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, lineHeight: 20 },
   pendObra: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3, flex: 1 },
   pendCardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  pendCardActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   tradeChip: {
     height: 20, borderRadius: 10, paddingHorizontal: 8,
-    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
   },
   tradeText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
+  pendCompleteBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    height: 24, paddingHorizontal: 10, borderRadius: 12,
+    backgroundColor: 'rgba(74,124,89,0.12)', borderWidth: 1, borderColor: 'rgba(74,124,89,0.25)',
+  },
+  pendCompleteBtnText: { fontFamily: fonts.archivo.bold, fontSize: 10, color: colors.success },
   pendDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.gris, letterSpacing: 0.3 },
 
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },

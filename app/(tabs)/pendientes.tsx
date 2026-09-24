@@ -72,28 +72,48 @@ function SkeletonPendienteCard() {
   );
 }
 
-function PendienteCard({ item, onPress, index }: { item: DbPending; onPress: () => void; index: number }) {
-  const statusColor = STATUS_COLOR[item.status];
-  const projectName = item.projects?.name ?? '—';
-  const rubroName   = item.rubros?.name ?? null;
-  const anim = useRef(new Animated.Value(0)).current;
+function PendienteCard({ item, onPress, onComplete, index }: {
+  item: DbPending;
+  onPress: () => void;
+  onComplete: () => void;
+  index: number;
+}) {
+  const statusColor  = STATUS_COLOR[item.status];
+  const projectName  = item.projects?.name ?? '—';
+  const rubroName    = item.rubros?.name ?? null;
+  const enterAnim    = useRef(new Animated.Value(0)).current;
+  const dismissAnim  = useRef(new Animated.Value(1)).current;
+  const [dismissing, setDismissing] = useState(false);
 
   useEffect(() => {
     Animated.sequence([
       Animated.delay(index * 65),
-      Animated.timing(anim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.timing(enterAnim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
   }, []);
 
+  function handleComplete() {
+    setDismissing(true);
+    Animated.timing(dismissAnim, {
+      toValue: 0,
+      duration: 550,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => onComplete());
+  }
+
   return (
     <Animated.View style={{
-      opacity: anim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+      opacity: Animated.multiply(
+        enterAnim.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 1, 1], extrapolate: 'clamp' }),
+        dismissAnim,
+      ),
       transform: [
-        { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
-        { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] }) },
+        { translateY: enterAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
+        { scale: enterAnim.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] }) },
       ],
     }}>
-      <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+      <TouchableOpacity style={[styles.card, dismissing && { elevation: 0, shadowOpacity: 0 }]} onPress={onPress} activeOpacity={0.85}>
         {/* Top row: status indicator + date */}
         <View style={styles.cardTopRow}>
           <View style={styles.statusRow}>
@@ -111,16 +131,29 @@ function PendienteCard({ item, onPress, index }: { item: DbPending; onPress: () 
         {/* Description */}
         <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
 
-        {/* Footer: meta + trade chip */}
+        {/* Footer: meta + trade chip + complete button */}
         <View style={styles.cardFooter}>
           <Text style={styles.cardMeta} numberOfLines={1}>
             {projectName}{rubroName ? ` · ${rubroName}` : ''}
           </Text>
-          {item.trade ? (
-            <View style={styles.tradeChip}>
-              <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
-            </View>
-          ) : null}
+          <View style={styles.cardActions}>
+            {item.trade ? (
+              <View style={styles.tradeChip}>
+                <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
+              </View>
+            ) : null}
+            {item.status !== 'resuelto' && (
+              <TouchableOpacity
+                style={styles.completeBtn}
+                onPress={(e) => { e.stopPropagation(); handleComplete(); }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+              >
+                <Feather name="check" size={13} color={colors.success} />
+                <Text style={styles.completeBtnText}>Completar</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -169,6 +202,11 @@ export default function PendientesScreen() {
 
   const pendienteCount = filtered.filter((p) => p.status === 'pendiente').length;
 
+  async function handleComplete(id: string) {
+    setItems((prev) => prev.filter((p) => p.id !== id));
+    await supabase.from('pending_items').update({ status: 'resuelto' }).eq('id', id);
+  }
+
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -210,6 +248,7 @@ export default function PendientesScreen() {
               item={item}
               index={i}
               onPress={() => router.push(`/pendiente/${item.id}`)}
+              onComplete={() => handleComplete(item.id)}
             />
           ))
         )}
@@ -310,11 +349,18 @@ const styles = StyleSheet.create({
   cardDesc: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, lineHeight: 20 },
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   cardMeta: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3, flex: 1 },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   tradeChip: {
     height: 20, borderRadius: 10, paddingHorizontal: 8,
-    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
   },
   tradeText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
+  completeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    height: 24, paddingHorizontal: 10, borderRadius: 12,
+    backgroundColor: 'rgba(74,124,89,0.12)', borderWidth: 1, borderColor: 'rgba(74,124,89,0.25)',
+  },
+  completeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 10, color: colors.success },
 
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
