@@ -126,8 +126,8 @@ function AnimatedMarkerDot({ marker, index, isSelected, imgW, imgH, onPress, onL
 export default function EditarFotoScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const { uri, project: projectId, rubro, rubroId, type, location } =
-    useLocalSearchParams<{ uri: string; project: string; rubro: string; rubroId: string; type: string; location?: string }>();
+  const { uri, project: projectId, rubro, rubroId, type, location, returnToInformeDia, projectName } =
+    useLocalSearchParams<{ uri: string; project: string; rubro: string; rubroId: string; type: string; location?: string; returnToInformeDia?: string; projectName?: string }>();
 
   const viewShotRef = useRef<ViewShot>(null);
   const [capturing, setCapturing] = useState(false);
@@ -225,6 +225,9 @@ export default function EditarFotoScreen() {
           projectId: projectId ?? '',
           rubroId: rubroId ?? '',
           location: location ?? '',
+          returnToInformeDia: returnToInformeDia ?? '',
+          rubroName: rubro ?? '',
+          projectName: projectName ?? '',
         },
       });
     } catch (e: any) {

@@ -307,11 +307,12 @@ function ItemChipRow({ chip, scan }: { chip: typeof ITEM_CHIPS[0]; scan: Animate
 
 export default function ProcesandoScreen() {
   const router = useRouter();
-  const { mode, type, videoUri, projectId, rubroId, note, fotoUrl, markersJson, comment, location } = useLocalSearchParams<{
+  const { mode, type, videoUri, projectId, rubroId, note, fotoUrl, markersJson, comment, location, returnToInformeDia, rubroName, projectName } = useLocalSearchParams<{
     mode?: string; type?: string; videoUri?: string;
     projectId?: string; rubroId?: string; note?: string;
     fotoUrl?: string; markersJson?: string; comment?: string;
-    location?: string;
+    location?: string; returnToInformeDia?: string;
+    rubroName?: string; projectName?: string;
   }>();
   const { studio, loading: studioLoading } = useStudio();
 
@@ -447,6 +448,7 @@ export default function ProcesandoScreen() {
             location:   location || null,
             status:     'processing',
             video_path: path,
+            ...(returnToInformeDia === 'true' ? { date: new Date().toISOString().slice(0, 10) } : {}),
           })
           .select('id')
           .single();
@@ -533,10 +535,13 @@ export default function ProcesandoScreen() {
           ) : done ? (
             <TouchableOpacity
               style={styles.viewBtn}
-              onPress={() => router.replace(`/informe/${reportId ?? 'demo'}?type=${type ?? 'contratistas'}`)}
+              onPress={() => returnToInformeDia === 'true'
+                ? router.replace({ pathname: '/informe-dia/[rubroId]', params: { rubroId: rubroId ?? '', rubroName: rubroName ?? '', projectId: projectId ?? '', projectName: projectName ?? '' } })
+                : router.replace(`/informe/${reportId ?? 'demo'}?type=${type ?? 'contratistas'}`)
+              }
               activeOpacity={0.85}
             >
-              <Text style={styles.viewBtnText}>Ver informe  →</Text>
+              <Text style={styles.viewBtnText}>{returnToInformeDia === 'true' ? 'Volver al informe del día  →' : 'Ver informe  →'}</Text>
             </TouchableOpacity>
           ) : (
             <Text style={styles.hint}>GPT-4o Vision analiza los marcadores</Text>
@@ -611,10 +616,13 @@ export default function ProcesandoScreen() {
         ) : done ? (
           <TouchableOpacity
             style={styles.viewBtn}
-            onPress={() => router.replace(`/informe/${reportId ?? 'demo'}?type=${type ?? 'contratistas'}`)}
+            onPress={() => returnToInformeDia === 'true'
+              ? router.replace({ pathname: '/informe-dia/[rubroId]', params: { rubroId: rubroId ?? '', rubroName: rubroName ?? '', projectId: projectId ?? '', projectName: projectName ?? '' } })
+              : router.replace(`/informe/${reportId ?? 'demo'}?type=${type ?? 'contratistas'}`)
+            }
             activeOpacity={0.85}
           >
-            <Text style={styles.viewBtnText}>Ver informe  →</Text>
+            <Text style={styles.viewBtnText}>{returnToInformeDia === 'true' ? 'Volver al informe del día  →' : 'Ver informe  →'}</Text>
           </TouchableOpacity>
         ) : stageIndex > 0 ? (
           <TouchableOpacity style={styles.cancelBtn} onPress={() => router.back()} activeOpacity={0.7}>

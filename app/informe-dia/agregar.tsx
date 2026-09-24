@@ -29,10 +29,25 @@ export default function AgregarMediaScreen() {
 
   async function handlePickGallery() {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: mode === 'foto'
-        ? ImagePicker.MediaTypeOptions.Images
-        : ImagePicker.MediaTypeOptions.Videos,
+      mediaTypes: mode === 'foto' ? ['images'] : ['videos'],
       quality: 0.85,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setUri(result.assets[0].uri);
+      setFileName(result.assets[0].fileName ?? null);
+    }
+  }
+
+  async function handleCamera() {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permiso requerido', 'Necesitamos acceso a la cámara.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: mode === 'foto' ? ['images'] : ['videos'],
+      quality: 0.85,
+      allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
       setUri(result.assets[0].uri);
@@ -132,11 +147,15 @@ export default function AgregarMediaScreen() {
           <View style={s.section}>
             <Text style={s.label}>ARCHIVO</Text>
             <View style={s.pickRow}>
-              <TouchableOpacity style={s.pickBtn} onPress={handlePickGallery} activeOpacity={0.8}>
+              <TouchableOpacity style={[s.pickBtn, { flex: 1.2 }]} onPress={handleCamera} activeOpacity={0.8}>
+                <Feather name={mode === 'foto' ? 'camera' : 'video'} size={16} color={colors.crema} />
+                <Text style={s.pickBtnText}>Cámara</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.pickBtn, { flex: 1 }]} onPress={handlePickGallery} activeOpacity={0.8}>
                 <Feather name="image" size={16} color={colors.crema} />
                 <Text style={s.pickBtnText}>Galería</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.pickBtn} onPress={handlePickFiles} activeOpacity={0.8}>
+              <TouchableOpacity style={[s.pickBtn, { flex: 1 }]} onPress={handlePickFiles} activeOpacity={0.8}>
                 <Feather name="folder" size={16} color={colors.crema} />
                 <Text style={s.pickBtnText}>Archivos</Text>
               </TouchableOpacity>

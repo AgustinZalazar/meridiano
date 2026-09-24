@@ -264,12 +264,14 @@ export default function NuevaGrabacionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     projectId?: string; projectName?: string; rubroName?: string; rubroId?: string;
+    returnToInformeDia?: string;
   }>();
 
-  const lockedProjectId   = params.projectId   ?? null;
-  const lockedProjectName = params.projectName ?? null;
-  const lockedRubroName   = params.rubroName   ?? null;
-  const lockedRubroId     = params.rubroId     ?? null;
+  const lockedProjectId          = params.projectId          ?? null;
+  const lockedProjectName        = params.projectName        ?? null;
+  const lockedRubroName          = params.rubroName          ?? null;
+  const lockedRubroId            = params.rubroId            ?? null;
+  const lockedReturnToInformeDia = params.returnToInformeDia ?? null;
 
   const [mode, setMode]             = useState<Mode>('video');
   const [reportType, setReportType] = useState<ReportType>('contratistas');
@@ -412,6 +414,8 @@ export default function NuevaGrabacionScreen() {
           rubroId: selectedRubroId ?? '',
           type: reportType,
           location,
+          returnToInformeDia: lockedReturnToInformeDia ?? '',
+          projectName: selectedProjectName ?? '',
         },
       });
     } else if (videoUri) {
@@ -425,6 +429,9 @@ export default function NuevaGrabacionScreen() {
           rubroId: selectedRubroId ?? '',
           note: note.trim(),
           location,
+          returnToInformeDia: lockedReturnToInformeDia ?? '',
+          rubroName: selectedRubro ?? '',
+          projectName: selectedProjectName ?? '',
         },
       });
     }
