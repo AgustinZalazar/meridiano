@@ -126,8 +126,8 @@ function AnimatedMarkerDot({ marker, index, isSelected, imgW, imgH, onPress, onL
 export default function EditarFotoScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const { uri, project: projectId, rubro, rubroId, type, location, returnToInformeDia, projectName } =
-    useLocalSearchParams<{ uri: string; project: string; rubro: string; rubroId: string; type: string; location?: string; returnToInformeDia?: string; projectName?: string }>();
+  const { uri, project: projectId, rubro, rubroId, type, location, returnToInformeDia, projectName, dailyReportId, dailyNote } =
+    useLocalSearchParams<{ uri: string; project: string; rubro: string; rubroId: string; type: string; location?: string; returnToInformeDia?: string; projectName?: string; dailyReportId?: string; dailyNote?: string }>();
 
   const viewShotRef = useRef<ViewShot>(null);
   const [capturing, setCapturing] = useState(false);
@@ -214,6 +214,19 @@ export default function EditarFotoScreen() {
       const base64 = await FileSystem.readAsStringAsync(capturedUri, { encoding: FileSystem.EncodingType.Base64 });
       const fotoUrl = await uploadFotoAnnotation(session.user.id, capturedUri, base64);
       if (!fotoUrl) throw new Error('No se pudo subir la foto anotada.');
+
+      if (dailyReportId) {
+        const { error } = await supabase.from('report_media').insert({
+          report_id: dailyReportId,
+          type: 'foto',
+          uri: fotoUrl,
+          note: dailyNote || null,
+        });
+        if (error) throw new Error('No se pudo guardar en el informe.');
+        router.back();
+        return;
+      }
+
       router.replace({
         pathname: '/procesando',
         params: {
@@ -478,7 +491,7 @@ export default function EditarFotoScreen() {
                 ? <ActivityIndicator color="#FFFFFF" size="small" />
                 : <>
                     <Feather name="zap" size={16} color="#FFFFFF" />
-                    <Text style={styles.btnPrimaryText}>Analizar con AI  →</Text>
+                    <Text style={styles.btnPrimaryText}>{dailyReportId ? 'Agregar al informe  →' : 'Analizar con AI  →'}</Text>
                   </>
               }
             </TouchableOpacity>

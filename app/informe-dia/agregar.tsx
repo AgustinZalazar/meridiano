@@ -70,22 +70,30 @@ export default function AgregarMediaScreen() {
     }
   }
 
-  async function handleSave() {
+  function handleAnnotateFoto() {
+    if (!uri || !reportId) return;
+    router.replace({
+      pathname: '/editar-foto',
+      params: {
+        uri,
+        project: '', rubro: '', rubroId: '', type: 'contratistas', location: '',
+        dailyReportId: reportId,
+        dailyNote: note.trim(),
+      },
+    });
+  }
+
+  async function handleSaveVideo() {
     if (!reportId || !uri || !studio) return;
     setSaving(true);
-
-    let storageUrl: string | null = null;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Sin sesión activa');
 
-      const ALLOWED_IMG_EXTS  = ['jpg', 'jpeg', 'png', 'heic', 'webp'];
-      const ALLOWED_VID_EXTS  = ['mp4', 'mov', 'avi', 'mkv', '3gp', 'webm'];
-      const allowedExts = mode === 'foto' ? ALLOWED_IMG_EXTS : ALLOWED_VID_EXTS;
-      const defaultExt  = mode === 'foto' ? 'jpg' : 'mp4';
-      const rawExt      = uri.split('.').pop()?.toLowerCase() ?? '';
-      const ext         = allowedExts.includes(rawExt) ? rawExt : defaultExt;
+      const ALLOWED_VID_EXTS = ['mp4', 'mov', 'avi', 'mkv', '3gp', 'webm'];
+      const rawExt = uri.split('.').pop()?.toLowerCase() ?? '';
+      const ext    = ALLOWED_VID_EXTS.includes(rawExt) ? rawExt : 'mp4';
 
       // Copy to cache (handles content:// URIs on Android)
       const cacheDir  = `${FileSystem.cacheDirectory ?? ''}daily_uploads/`;
@@ -93,13 +101,11 @@ export default function AgregarMediaScreen() {
       const localPath = `${cacheDir}${Date.now()}.${ext}`;
       await FileSystem.copyAsync({ from: uri, to: localPath });
 
-      const storagePath = `daily/${studio.id}/${reportId}/${Date.now()}.${ext}`;
+      // Path must start with studio.id to match storage RLS policy
+      const storagePath = `${studio.id}/daily/${reportId}/${Date.now()}.${ext}`;
       const uploadUrl   = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${storagePath}`;
-      const contentType = mode === 'foto'
-        ? `image/${ext === 'jpg' ? 'jpeg' : ext}`
-        : `video/${ext}`;
 
-      setUploadLabel(mode === 'foto' ? 'Subiendo foto…' : 'Subiendo video…');
+      setUploadLabel('Subiendo video…');
 
       const uploadTask = FileSystem.createUploadTask(
         uploadUrl, localPath,
@@ -108,7 +114,7 @@ export default function AgregarMediaScreen() {
           uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
           headers: {
             Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': contentType,
+            'Content-Type': `video/${ext}`,
             'x-upsert': 'true',
           },
         },
@@ -118,36 +124,30 @@ export default function AgregarMediaScreen() {
       FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
 
       if (!result || result.status >= 300)
-        throw new Error('No se pudo subir el archivo. Verificá tu conexión.');
+        throw new Error('No se pudo subir el video. Verificá tu conexión.');
 
-      storageUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${storagePath}`;
-    } catch (e: any) {
-      setSaving(false);
-      Alert.alert('Error al subir', e.message ?? 'Ocurrió un error inesperado.');
-      return;
-    }
+      const storageUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${storagePath}`;
 
-    setUploadLabel('Guardando…');
+      setUploadLabel('Guardando…');
 
-    const { error } = await supabase
-      .from('report_media')
-      .insert({
+      const { error } = await supabase.from('report_media').insert({
         report_id: reportId,
-        type:      mode,
+        type:      'video',
         uri:       storageUrl,
         note:      note.trim() || null,
       });
 
-    setSaving(false);
-
-    if (error) {
-      Alert.alert('Error', 'No se pudo guardar el elemento.');
-      return;
+      if (error) throw new Error('No se pudo guardar el elemento.');
+      router.back();
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Ocurrió un error inesperado.');
+    } finally {
+      setSaving(false);
     }
-    router.back();
   }
 
-  const canSave = !!uri && !saving && !studioLoading && !!studio;
+  const canActFoto  = !!uri && mode === 'foto';
+  const canSave     = !!uri && mode === 'video' && !saving && !studioLoading && !!studio;
 
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>
@@ -240,20 +240,32 @@ export default function AgregarMediaScreen() {
 
         {/* CTA */}
         <View style={s.ctaBlock}>
-          <TouchableOpacity
-            style={[s.saveBtn, !canSave && { opacity: 0.4 }]}
-            onPress={handleSave}
-            disabled={!canSave}
-            activeOpacity={0.85}
-          >
-            {saving
-              ? <><ActivityIndicator color="#FFF" size="small" /><Text style={s.saveBtnText}>{uploadLabel}</Text></>
-              : <>
-                  <Feather name="plus-circle" size={16} color="#FFF" />
-                  <Text style={s.saveBtnText}>Agregar al informe</Text>
-                </>
-            }
-          </TouchableOpacity>
+          {mode === 'foto' ? (
+            <TouchableOpacity
+              style={[s.saveBtn, !canActFoto && { opacity: 0.4 }]}
+              onPress={handleAnnotateFoto}
+              disabled={!canActFoto}
+              activeOpacity={0.85}
+            >
+              <Feather name="edit-2" size={16} color="#FFF" />
+              <Text style={s.saveBtnText}>Anotar y agregar  →</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[s.saveBtn, !canSave && { opacity: 0.4 }]}
+              onPress={handleSaveVideo}
+              disabled={!canSave}
+              activeOpacity={0.85}
+            >
+              {saving
+                ? <><ActivityIndicator color="#FFF" size="small" /><Text style={s.saveBtnText}>{uploadLabel}</Text></>
+                : <>
+                    <Feather name="plus-circle" size={16} color="#FFF" />
+                    <Text style={s.saveBtnText}>Agregar al informe</Text>
+                  </>
+              }
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </View>
