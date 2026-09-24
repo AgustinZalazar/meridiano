@@ -702,7 +702,12 @@ export default function NuevaGrabacionScreen() {
             disabled={!canContinue}
           >
             <Text style={s.btnPrimaryText}>
-              {mode === 'foto' ? 'Anotar foto  →' : 'Procesar informe  →'}
+              {mode === 'foto'
+                ? 'Anotar foto  →'
+                : lockedReturnToInformeDia
+                  ? 'Agregar al informe del día  →'
+                  : 'Procesar informe  →'
+              }
             </Text>
           </TouchableOpacity>
         </View>

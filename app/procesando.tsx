@@ -373,6 +373,11 @@ export default function ProcesandoScreen() {
         await new Promise(r => setTimeout(r, 400));
         setStageIndex(4);
         setReportId(data.report_id);
+        if (returnToInformeDia === 'true' && data.report_id) {
+          await supabase.from('reports')
+            .update({ date: new Date().toISOString().slice(0, 10) })
+            .eq('id', data.report_id);
+        }
         setTimeout(() => setDone(true), 300);
       } catch (e: any) {
         setErrorMsg(e.message ?? 'Ocurrió un error inesperado.');
@@ -398,9 +403,9 @@ export default function ProcesandoScreen() {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('Sin sesión activa');
 
-        const ext = videoUri!.split('.').pop()?.toLowerCase() ?? 'mp4';
         const ALLOWED_VIDEO_EXTS = ['mp4', 'mov', 'avi', 'mkv', '3gp', 'webm'];
-        if (!ALLOWED_VIDEO_EXTS.includes(ext)) throw new Error('Tipo de video no permitido.');
+        const rawExt = videoUri!.split('.').pop()?.toLowerCase() ?? '';
+        const ext = ALLOWED_VIDEO_EXTS.includes(rawExt) ? rawExt : 'mp4';
 
         // Copy to app cache to ensure file:// access (handles content:// URIs from camera on Android)
         const cacheDir = `${FileSystem.cacheDirectory ?? ''}video_uploads/`;
