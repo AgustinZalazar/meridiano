@@ -7,9 +7,12 @@ import {
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
+import { useStudio } from '../../lib/use-studio';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,12 +58,15 @@ export default function InformeDiaScreen() {
   const rubroName   = Array.isArray(params.rubroName)   ? params.rubroName[0]   : params.rubroName;
   const projectId   = Array.isArray(params.projectId)   ? params.projectId[0]   : params.projectId;
 
+  const { studio } = useStudio();
+
   const [loading, setLoading]         = useState(true);
   const [openReport, setOpenReport]   = useState<DailyReport | null>(null);
   const [media, setMedia]             = useState<ReportMedia[]>([]);
   const [reportType, setReportType]   = useState<ReportType>('contratistas');
   const [starting, setStarting]       = useState(false);
   const [closing, setClosing]         = useState(false);
+  const [closeStage, setCloseStage]   = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!rubroId) return;
@@ -122,25 +128,100 @@ export default function InformeDiaScreen() {
     setMedia([]);
   }
 
-  async function handleClose() {
+  async function runClose() {
+    if (!openReport || !studio) return;
+    setClosing(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Sin sesión activa');
+
+      // Build media_items: fotos use uri directly, videos need a thumbnail
+      const mediaItems: { type: 'foto' | 'video'; url: string; note: string | null }[] = [];
+
+      setCloseStage('Preparando material…');
+
+      for (const item of media) {
+        if (!item.uri) continue;
+
+        if (item.type === 'foto') {
+          mediaItems.push({ type: 'foto', url: item.uri, note: item.note });
+        } else {
+          // Extract thumbnail from video at 1s (or 0 if shorter)
+          try {
+            setCloseStage(`Extrayendo captura de video ${mediaItems.length + 1}…`);
+            const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(item.uri, { time: 1000 });
+
+            // Upload thumbnail to storage
+            const thumbPath = `${studio.id}/daily/thumbs/${Date.now()}.jpg`;
+            const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${thumbPath}`;
+
+            const cacheDir  = `${FileSystem.cacheDirectory ?? ''}daily_thumbs/`;
+            await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+            const localPath = `${cacheDir}${Date.now()}.jpg`;
+            await FileSystem.copyAsync({ from: thumbUri, to: localPath });
+
+            const uploadTask = FileSystem.createUploadTask(
+              uploadUrl, localPath,
+              {
+                httpMethod: 'POST',
+                uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+                headers: {
+                  Authorization: `Bearer ${session.access_token}`,
+                  'Content-Type': 'image/jpeg',
+                  'x-upsert': 'true',
+                },
+              },
+            );
+            const result = await uploadTask.uploadAsync();
+            FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
+
+            if (result && result.status < 300) {
+              const thumbUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${thumbPath}`;
+              mediaItems.push({ type: 'video', url: thumbUrl, note: item.note });
+            }
+          } catch {
+            // If thumbnail extraction fails, skip this video rather than blocking the whole report
+          }
+        }
+      }
+
+      if (mediaItems.length === 0) throw new Error('No hay material válido para generar el informe.');
+
+      setCloseStage('Analizando con IA…');
+
+      const { data, error } = await supabase.functions.invoke('process-daily-report', {
+        body: {
+          daily_report_id: openReport.id,
+          media_items: mediaItems,
+        },
+      });
+
+      if (error) throw new Error(error.message ?? 'Error al generar el informe');
+
+      setCloseStage(null);
+      setClosing(false);
+      router.replace(`/informe/${data.report_id}?type=${openReport.type}`);
+
+    } catch (e: any) {
+      setCloseStage(null);
+      setClosing(false);
+      Alert.alert('Error al generar', e.message ?? 'Ocurrió un error inesperado.');
+    }
+  }
+
+  function handleClose() {
     if (!openReport) return;
+    if (media.length === 0) {
+      Alert.alert('Sin elementos', 'Agregá al menos una foto o video antes de cerrar el informe.');
+      return;
+    }
     Alert.alert(
       'Cerrar y generar',
-      '¿Cerrar el informe del día y generar el resumen con IA?',
+      `¿Cerrar el informe del día y generar el resumen con IA? Se analizarán ${media.length} elemento${media.length !== 1 ? 's' : ''}.`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Cerrar y generar',
-          onPress: async () => {
-            setClosing(true);
-            await supabase
-              .from('reports')
-              .update({ status: 'processing' })
-              .eq('id', openReport.id);
-            setClosing(false);
-            router.replace('/(tabs)');
-          },
-        },
+        { text: 'Generar', onPress: runClose },
       ],
     );
   }
@@ -219,17 +300,25 @@ export default function InformeDiaScreen() {
           <Text style={s.topTitle} numberOfLines={1}>{rubroName ?? 'Rubro'}</Text>
         </View>
         <TouchableOpacity
-          style={[s.closeBtn, closing && { opacity: 0.5 }]}
+          style={[s.closeBtn, closing && { opacity: 0.6, paddingHorizontal: 10 }]}
           onPress={handleClose}
           disabled={closing}
           activeOpacity={0.85}
         >
           {closing
             ? <ActivityIndicator color="#FFF" size="small" />
-            : <Text style={s.closeBtnText}>Cerrar</Text>
+            : <Text style={s.closeBtnText}>Cerrar y generar</Text>
           }
         </TouchableOpacity>
       </View>
+
+      {/* Processing overlay */}
+      {closing && closeStage && (
+        <View style={s.processingBanner}>
+          <ActivityIndicator color={colors.arena} size="small" />
+          <Text style={s.processingText}>{closeStage}</Text>
+        </View>
+      )}
 
       {/* Status banner */}
       <View style={s.statusBanner}>
@@ -302,10 +391,19 @@ const s = StyleSheet.create({
   topTitle: { fontFamily: fonts.archivo.bold, fontSize: 15, color: colors.crema, marginTop: 2 },
 
   closeBtn: {
-    height: 36, paddingHorizontal: 16, borderRadius: 18,
+    height: 36, paddingHorizontal: 14, borderRadius: 18,
     backgroundColor: colors.crema, alignItems: 'center', justifyContent: 'center',
   },
-  closeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 13, color: '#FFF' },
+  closeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: '#FFF' },
+
+  processingBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginHorizontal: spacing.xl, marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: 10,
+    backgroundColor: 'rgba(217,119,87,0.10)', borderRadius: 14,
+    borderWidth: 1, borderColor: 'rgba(217,119,87,0.25)',
+  },
+  processingText: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.arena, flex: 1 },
 
   statusBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
