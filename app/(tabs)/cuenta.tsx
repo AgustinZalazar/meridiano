@@ -824,14 +824,15 @@ const styles = StyleSheet.create({
 
   // ── Section break ─────────────────────────────────────────────────────
   break: {
-    height: 8,
+    height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
+    marginHorizontal: spacing.xl,
+    marginVertical: 24,
   },
 
   // ── Sections ──────────────────────────────────────────────────────────
   section: {
     paddingHorizontal: spacing.xl,
-    paddingTop: 20,
     paddingBottom: 4,
     gap: 12,
   },
