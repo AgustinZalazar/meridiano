@@ -11,6 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing, fonts } from '../constants/theme';
 import { useAuth } from '../lib/auth-context';
 import { uploadFotoAnnotation } from '../lib/upload-image';
+import { supabase } from '../lib/supabase';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
