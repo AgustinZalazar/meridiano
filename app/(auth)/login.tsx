@@ -151,7 +151,7 @@ export default function LoginScreen() {
               <Logo />
             </Animated.View>
             <Animated.View style={fs(animTitle)}>
-              <Text style={styles.heading}>Bienvenida{'\n'}de nuevo</Text>
+              <Text style={styles.heading}>Bienvenido/a{'\n'}de nuevo</Text>
             </Animated.View>
             <Animated.View style={fs(animSub)}>
               <Text style={styles.subheading}>Ingresá para ver tus proyectos y rubros</Text>
@@ -200,9 +200,15 @@ export default function LoginScreen() {
                 }
               </TouchableOpacity>
             </Animated.View>
-            <TouchableOpacity style={styles.btnLink} onPress={() => router.push('/(auth)/onboarding')} activeOpacity={0.7}>
-              <Text style={styles.btnLinkText}>¿Primera vez? Crear estudio</Text>
-            </TouchableOpacity>
+            <View style={styles.linksRow}>
+              <TouchableOpacity style={styles.btnLink} onPress={() => router.push('/(auth)/onboarding')} activeOpacity={0.7}>
+                <Text style={styles.btnLinkText}>Crear estudio</Text>
+              </TouchableOpacity>
+              <View style={styles.linksDivider} />
+              <TouchableOpacity style={styles.btnLink} onPress={() => router.push('/(auth)/registro-invitado')} activeOpacity={0.7}>
+                <Text style={styles.btnLinkText}>Tengo invitación</Text>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -241,6 +247,8 @@ const styles = StyleSheet.create({
   btnPrimary: { height: 54, borderRadius: 27, backgroundColor: colors.crema, alignItems: 'center', justifyContent: 'center' },
   btnDisabled: { opacity: 0.35 },
   btnPrimaryText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.2 },
+  linksRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
+  linksDivider: { width: 1, height: 12, backgroundColor: colors.border },
   btnLink: { alignItems: 'center', paddingVertical: spacing.sm },
   btnLinkText: { fontFamily: fonts.mono.regular, fontSize: 10.5, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.gris, fontWeight: '700' },
 });

@@ -16,10 +16,10 @@ import { useStudio, StudioRole } from '../../lib/use-studio';
 import { useSubscription } from '../../lib/use-subscription';
 import { BottomSheet } from '../../components/BottomSheet';
 
-const PLAN_META: Record<string, { label: string; videos: number; price: string }> = {
-  starter:    { label: 'Starter',    videos: 30,  price: '$49/mes' },
-  pro:        { label: 'Pro',        videos: 100, price: '$149/mes' },
-  enterprise: { label: 'Enterprise', videos: 999, price: 'A medida' },
+const PLAN_META: Record<string, { label: string; users: number; videos: number; price: string }> = {
+  starter:    { label: 'Starter',    users: 3,   videos: 30,  price: '$49/mes' },
+  pro:        { label: 'Pro',        users: 10,  videos: 100, price: '$149/mes' },
+  enterprise: { label: 'Enterprise', users: 999, videos: 999, price: 'A medida' },
 };
 
 const ROLE_LABEL: Record<StudioRole, string> = {
@@ -27,6 +27,13 @@ const ROLE_LABEL: Record<StudioRole, string> = {
   admin:  'Admin',
   member: 'Miembro',
   viewer: 'Observador',
+};
+
+const ROLE_DESC: Record<StudioRole, string> = {
+  owner:  'Acceso total · facturación',
+  admin:  'Acceso completo al estudio',
+  member: 'Puede grabar y ver informes',
+  viewer: 'Solo puede ver informes',
 };
 
 const ROLES_ASSIGNABLE: { value: StudioRole; label: string; desc: string }[] = [
@@ -48,36 +55,38 @@ interface PendingInvite {
   expires_at: string;
 }
 
-function UserAvatar({ uri, name, size = 64 }: { uri?: string | null; name: string; size?: number }) {
+function UserAvatar({ uri, name, size = 80 }: { uri?: string | null; name: string; size?: number }) {
   const initials = name.split(' ').map((w) => w[0] ?? '').slice(0, 2).join('').toUpperCase();
   if (uri) {
-    return <Image source={{ uri }} style={[{ width: size, height: size, borderRadius: size / 2 }]} />;
+    return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
   }
   return (
     <View style={[styles.avatarFallback, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Text style={[styles.avatarInitials, { fontSize: size * 0.33 }]}>{initials}</Text>
+      <Text style={[styles.avatarInitials, { fontSize: size * 0.32 }]}>{initials}</Text>
     </View>
   );
 }
 
-function MemberAvatar({ name, size = 36 }: { name: string; size?: number }) {
+function MemberAvatar({ name, size = 44, dark }: { name: string; size?: number; dark?: boolean }) {
   const initials = name.split(' ').map((w) => w[0] ?? '').slice(0, 2).join('').toUpperCase();
   return (
-    <View style={[styles.memberAvatarWrap, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Text style={[styles.memberAvatarText, { fontSize: size * 0.36 }]}>{initials}</Text>
+    <View style={[
+      styles.memberAvatarBase,
+      { width: size, height: size, borderRadius: size / 2 },
+      dark ? styles.memberAvatarDark : styles.memberAvatarLight,
+    ]}>
+      <Text style={[
+        styles.memberAvatarText,
+        { fontSize: size * 0.34 },
+        dark ? styles.memberAvatarTextDark : styles.memberAvatarTextLight,
+      ]}>
+        {initials}
+      </Text>
     </View>
   );
 }
 
-function ProgressBar({ value }: { value: number }) {
-  return (
-    <View style={styles.progressTrack}>
-      <View style={[styles.progressFill, { width: `${value}%` as `${number}%` }]} />
-    </View>
-  );
-}
-
-function formatPeriodEnd(date: Date): string {
+function formatRenewal(date: Date): string {
   return date.toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
 }
 
@@ -86,7 +95,7 @@ export default function CuentaScreen() {
   const router = useRouter();
   const { session } = useAuth();
   const { profile, email, refetch: refetchProfile } = useProfile();
-  const { studio, isAdmin, loading: studioLoading, refetch: refetchStudio } = useStudio();
+  const { studio, isAdmin, isOwner, loading: studioLoading, refetch: refetchStudio } = useStudio();
   const { subscription } = useSubscription();
 
   const [members, setMembers] = useState<Member[]>([]);
@@ -120,9 +129,10 @@ export default function CuentaScreen() {
 
   const subStatus = subscription?.status;
   const statusLabel =
-    subStatus === 'trialing' ? 'Período de prueba' :
-    subStatus === 'past_due' ? 'Pago pendiente' :
+    subStatus === 'trialing' ? 'Prueba' :
+    subStatus === 'past_due' ? 'Vencido' :
     subStatus === 'canceled' ? 'Cancelado' : 'Activo';
+  const statusIsAlert = subStatus === 'past_due' || subStatus === 'canceled';
 
   useFocusEffect(useCallback(() => { refetchStudio(); }, [refetchStudio]));
 
@@ -156,11 +166,7 @@ export default function CuentaScreen() {
     if (!session?.user?.id) return;
     if (!(await requestPhotoPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-      base64: true,
+      mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8, base64: true,
     });
     if (result.canceled || !result.assets[0]?.base64) return;
     setAvatarUploading(true);
@@ -173,20 +179,15 @@ export default function CuentaScreen() {
       const bytes = new Uint8Array(bs.length);
       for (let i = 0; i < bs.length; i++) bytes[i] = bs.charCodeAt(i);
       const { error: uploadErr } = await supabase.storage
-        .from('avatars')
-        .upload(path, bytes, { contentType: `image/${ext}`, upsert: true });
+        .from('avatars').upload(path, bytes, { contentType: `image/${ext}`, upsert: true });
       if (uploadErr) throw uploadErr;
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
-      await supabase
-        .from('profiles')
-        .update({ avatar_url: `${publicUrl}?v=${Date.now()}` })
-        .eq('id', session.user.id);
+      await supabase.from('profiles')
+        .update({ avatar_url: `${publicUrl}?v=${Date.now()}` }).eq('id', session.user.id);
       await refetchProfile();
     } catch (err: unknown) {
       Alert.alert('Error', err instanceof Error ? err.message : String(err));
-    } finally {
-      setAvatarUploading(false);
-    }
+    } finally { setAvatarUploading(false); }
   }
 
   async function handleSaveProfile() {
@@ -210,11 +211,7 @@ export default function CuentaScreen() {
     if (!studio || !isAdmin) return;
     if (!(await requestPhotoPermission())) return;
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.85,
-      base64: true,
+      mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.85, base64: true,
     });
     if (result.canceled || !result.assets[0]) return;
     setLogoUploading(true);
@@ -226,18 +223,15 @@ export default function CuentaScreen() {
       const bs = atob(asset.base64);
       const bytes = new Uint8Array(bs.length);
       for (let i = 0; i < bs.length; i++) bytes[i] = bs.charCodeAt(i);
-      const { error: uploadError } = await supabase.storage
-        .from('studio-logos')
-        .upload(path, bytes, { contentType: `image/${ext}`, upsert: true });
-      if (uploadError) throw uploadError;
+      const { error } = await supabase.storage
+        .from('studio-logos').upload(path, bytes, { contentType: `image/${ext}`, upsert: true });
+      if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from('studio-logos').getPublicUrl(path);
       await supabase.from('studios').update({ logo_url: `${publicUrl}?v=${Date.now()}` }).eq('id', studio.id);
       await refetchStudio();
     } catch (err: unknown) {
       Alert.alert('Error', err instanceof Error ? err.message : String(err));
-    } finally {
-      setLogoUploading(false);
-    }
+    } finally { setLogoUploading(false); }
   }
 
   async function handleSaveStudio() {
@@ -262,8 +256,7 @@ export default function CuentaScreen() {
     if (!memberSheetMember || !studio) return;
     setMemberActionLoading(true);
     if (memberSheetRole !== memberSheetMember.role) {
-      await supabase
-        .from('studio_members')
+      await supabase.from('studio_members')
         .update({ role: memberSheetRole })
         .match({ studio_id: studio.id, user_id: memberSheetMember.user_id });
       fetchMembers();
@@ -281,9 +274,7 @@ export default function CuentaScreen() {
       {
         text: 'Eliminar', style: 'destructive',
         onPress: async () => {
-          await supabase
-            .from('studio_members')
-            .delete()
+          await supabase.from('studio_members').delete()
             .match({ studio_id: studio.id, user_id: memberSheetMember.user_id });
           fetchMembers();
         },
@@ -298,11 +289,7 @@ export default function CuentaScreen() {
     fetchMembers();
   }
 
-  // ── Account ──────────────────────────────────────────────────────────────
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-  }
+  async function handleLogout() { await supabase.auth.signOut(); }
 
   async function handleDeleteAccount() {
     setDeletingAccount(true);
@@ -317,10 +304,10 @@ export default function CuentaScreen() {
     }
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-
-  const allMemberRows = [...members, ...pendingInvites];
-  const totalRows = allMemberRows.length;
+  const memberCount = members.length;
+  const teamSubtitle = studio
+    ? `${memberCount} miembro${memberCount !== 1 ? 's' : ''} · Plan ${plan.label} admite ${plan.users === 999 ? '∞' : plan.users}`
+    : '';
 
   // ── Render ───────────────────────────────────────────────────────────────
 
@@ -331,67 +318,44 @@ export default function CuentaScreen() {
         {/* ─── PERFIL ──────────────────────────────────────────────────── */}
         <View style={styles.profileBlock}>
           <View style={styles.profileRow}>
-            {/* Avatar with camera badge */}
-            <TouchableOpacity onPress={openProfileSheet} activeOpacity={0.85} style={styles.avatarTouchable}>
-              <UserAvatar uri={profile?.avatar_url} name={displayName} size={64} />
+            <TouchableOpacity onPress={openProfileSheet} activeOpacity={0.85} style={styles.avatarWrap}>
+              <UserAvatar uri={profile?.avatar_url} name={displayName} size={78} />
               <View style={styles.cameraBadge}>
-                <Feather name="camera" size={11} color={colors.panel} />
+                <Feather name="camera" size={12} color={colors.panel} />
               </View>
             </TouchableOpacity>
-
-            {/* Name + email */}
             <View style={styles.profileInfo}>
               <Text style={styles.profileName} numberOfLines={1}>{displayName}</Text>
               {email ? <Text style={styles.profileEmail} numberOfLines={1}>{email}</Text> : null}
+              <TouchableOpacity onPress={openProfileSheet} activeOpacity={0.7}>
+                <Text style={styles.profileEditLink}>Editar perfil</Text>
+              </TouchableOpacity>
             </View>
-
-            {/* Bell */}
-            <TouchableOpacity style={styles.circleBtn} onPress={() => router.push('/notificaciones')} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.bellBtn} onPress={() => router.push('/notificaciones')} activeOpacity={0.8}>
               <Feather name="bell" size={16} color={colors.crema} />
             </TouchableOpacity>
           </View>
-
-          {/* Edit pill */}
-          <TouchableOpacity style={styles.editPill} onPress={openProfileSheet} activeOpacity={0.75}>
-            <Feather name="edit-2" size={11} color={colors.gris} />
-            <Text style={styles.editPillText}>Editar perfil</Text>
-          </TouchableOpacity>
         </View>
 
-        <View style={styles.break} />
-
-        {/* ─── SUSCRIPCIÓN ─────────────────────────────────────────────── */}
-        <View style={styles.section}>
-          <View style={styles.sectionTop}>
-            <Text style={styles.sectionLabel}>SUSCRIPCIÓN</Text>
-            <TouchableOpacity onPress={() => router.push('/suscripcion')} activeOpacity={0.7}>
-              <Text style={styles.sectionAction}>Ver planes ›</Text>
-            </TouchableOpacity>
-          </View>
-
+        {/* ─── PLAN CARD ───────────────────────────────────────────────── */}
+        <View style={styles.planPad}>
           <View style={styles.planCard}>
-            <View style={styles.planCardRow}>
-              <View>
-                <Text style={styles.planName}>{plan.label}</Text>
-                <Text style={styles.planPrice}>{plan.price}</Text>
-              </View>
-              <View style={styles.statusPill}>
-                <View style={[
-                  styles.statusDot,
-                  subStatus === 'past_due' || subStatus === 'canceled'
-                    ? { backgroundColor: colors.error }
-                    : { backgroundColor: '#4ade80' },
-                ]} />
+            {/* Top row */}
+            <View style={styles.planTopRow}>
+              <Text style={styles.tuPlanLabel}>TU PLAN</Text>
+              <View style={[styles.statusPill, statusIsAlert && styles.statusPillAlert]}>
+                <View style={[styles.statusDot, statusIsAlert && styles.statusDotAlert]} />
                 <Text style={styles.statusText}>{statusLabel}</Text>
               </View>
             </View>
 
-            {subscription?.currentPeriodEnd && (
-              <Text style={styles.planPeriodText}>
-                Próximo cobro: {formatPeriodEnd(subscription.currentPeriodEnd)}
-              </Text>
-            )}
+            {/* Plan name + price */}
+            <View style={styles.planNameRow}>
+              <Text style={styles.planName}>{plan.label}</Text>
+              <Text style={styles.planPrice}> {plan.price}</Text>
+            </View>
 
+            {/* Usage */}
             <View style={styles.usageBlock}>
               <View style={styles.usageRow}>
                 <Text style={styles.usageLabel}>Videos este período</Text>
@@ -399,32 +363,43 @@ export default function CuentaScreen() {
                   {videosUsed} / {videoLimit === 999 ? '∞' : videoLimit}
                 </Text>
               </View>
-              <ProgressBar value={videoProgress} />
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${videoProgress}%` as `${number}%` }]} />
+              </View>
             </View>
+
+            {subscription?.currentPeriodEnd && (
+              <Text style={styles.renewText}>
+                Se renueva el {formatRenewal(subscription.currentPeriodEnd)}
+              </Text>
+            )}
+
+            {/* Divider inside card */}
+            <View style={styles.planInternalDivider} />
+
+            {/* Ver planes row */}
+            <TouchableOpacity
+              style={styles.planAction}
+              onPress={() => router.push('/suscripcion')}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.planActionText}>Ver planes y facturación</Text>
+              <Feather name="chevron-right" size={18} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.break} />
+        {/* ─── SEPARADOR ───────────────────────────────────────────────── */}
+        <View style={styles.separator} />
 
         {/* ─── ESTUDIO ─────────────────────────────────────────────────── */}
         <View style={styles.section}>
-          <View style={styles.sectionTop}>
-            <View>
-              <Text style={styles.sectionLabel}>ESTUDIO</Text>
-              {studio && <Text style={styles.studioTitle}>{studio.name}</Text>}
-            </View>
-            {isAdmin && (
-              <TouchableOpacity style={styles.addBtn} onPress={() => router.push('/invitar-miembro')} activeOpacity={0.8}>
-                <Feather name="user-plus" size={14} color={colors.crema} />
-                <Text style={styles.addBtnText}>Invitar</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <Text style={styles.sectionTitle}>Estudio</Text>
+          <Text style={styles.sectionSubtitle}>Identidad de tu espacio de trabajo</Text>
 
-          {/* Studio identity row */}
           {studio && (
             <TouchableOpacity
-              style={styles.studioRow}
+              style={styles.studioCard}
               onPress={openStudioSheet}
               activeOpacity={isAdmin ? 0.75 : 1}
               disabled={!isAdmin}
@@ -437,130 +412,145 @@ export default function CuentaScreen() {
                     </Text>
                 }
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.studioRowName}>{studio.name}</Text>
-                {isAdmin && <Text style={styles.studioRowHint}>Editar nombre y logo</Text>}
+              <View style={styles.studioCardMeta}>
+                <Text style={styles.studioCardName}>{studio.name}</Text>
+                <Text style={styles.studioCardHint}>Nombre y logo del estudio</Text>
               </View>
               {isAdmin && <Feather name="chevron-right" size={16} color={colors.faint} />}
             </TouchableOpacity>
           )}
 
-          {/* Members grouped container */}
-          {(membersLoading || (!studioLoading && studio)) && (
-            <View style={styles.grouped}>
-              {membersLoading ? (
-                <View style={styles.groupedRow}>
-                  <ActivityIndicator color={colors.crema} />
-                </View>
-              ) : (
-                <>
-                  {members.map((m, i) => {
-                    const name = m.full_name || 'Usuario';
-                    const canManage = isAdmin && m.role !== 'owner';
-                    const isLast = i === members.length - 1 && pendingInvites.length === 0;
-                    return (
-                      <Fragment key={m.user_id}>
-                        <View style={styles.groupedRow}>
-                          <MemberAvatar name={name} size={36} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.memberName}>{name}</Text>
-                            <Text style={styles.memberRole}>{ROLE_LABEL[m.role]}</Text>
-                          </View>
-                          {canManage && (
-                            <TouchableOpacity
-                              onPress={() => openMemberSheet(m)}
-                              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-                              activeOpacity={0.6}
-                            >
-                              <Feather name="more-horizontal" size={18} color={colors.gris} />
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                        {!isLast && <View style={styles.groupedDivider} />}
-                      </Fragment>
-                    );
-                  })}
-                  {pendingInvites.map((inv, i) => {
-                    const isLast = i === pendingInvites.length - 1;
-                    return (
-                      <Fragment key={inv.id}>
-                        {members.length > 0 && i === 0 && <View style={styles.groupedDivider} />}
-                        <View style={styles.groupedRow}>
-                          <View style={styles.inviteIcon}>
-                            <Feather name="mail" size={15} color={colors.faint} />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.memberName} numberOfLines={1}>{inv.email}</Text>
-                            <Text style={[styles.memberRole, { color: colors.arena }]}>Invitación pendiente</Text>
-                          </View>
-                          {isAdmin && (
-                            <TouchableOpacity
-                              onPress={() => handleCancelInvite(inv.id)}
-                              hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-                              activeOpacity={0.6}
-                            >
-                              {cancelingInviteId === inv.id
-                                ? <ActivityIndicator size="small" color={colors.gris} />
-                                : <Feather name="x" size={18} color={colors.gris} />
-                              }
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                        {!isLast && <View style={styles.groupedDivider} />}
-                      </Fragment>
-                    );
-                  })}
-                </>
-              )}
-            </View>
-          )}
-
-          {/* No studio */}
           {!studioLoading && !studio && (
-            <TouchableOpacity style={styles.createStudioBtn} onPress={() => router.push('/studio/crear')} activeOpacity={0.85}>
-              <Feather name="home" size={14} color={colors.crema} />
-              <Text style={styles.createStudioText}>Crear estudio</Text>
+            <TouchableOpacity style={styles.createStudioCard} onPress={() => router.push('/studio/crear')} activeOpacity={0.85}>
+              <View style={[styles.studioLogoSlot, { backgroundColor: colors.chip }]}>
+                <Feather name="home" size={18} color={colors.gris} />
+              </View>
+              <Text style={styles.studioCardName}>Crear estudio</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        <View style={styles.break} />
+        {/* ─── EQUIPO ──────────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Equipo</Text>
+          {studio && <Text style={styles.sectionSubtitle}>{teamSubtitle}</Text>}
+
+          {membersLoading ? (
+            <ActivityIndicator color={colors.crema} style={{ marginTop: 8 }} />
+          ) : (
+            <>
+              {members.map((m) => {
+                const name = m.full_name || 'Usuario';
+                const isMe = m.user_id === session?.user?.id;
+                const canManage = isAdmin && m.role !== 'owner';
+                return (
+                  <TouchableOpacity
+                    key={m.user_id}
+                    style={styles.memberCard}
+                    onPress={canManage ? () => openMemberSheet(m) : undefined}
+                    activeOpacity={canManage ? 0.75 : 1}
+                    disabled={!canManage}
+                  >
+                    <View style={styles.memberAvatarWrap}>
+                      <MemberAvatar name={name} size={44} dark />
+                    </View>
+                    <View style={styles.memberInfo}>
+                      <View style={styles.memberNameRow}>
+                        <Text style={styles.memberName}>{name}</Text>
+                        {isMe && <Text style={styles.memberYou}> (Tú)</Text>}
+                      </View>
+                      <Text style={styles.memberDesc}>{ROLE_DESC[m.role]}</Text>
+                    </View>
+                    <View style={[
+                      styles.roleBadge,
+                      (m.role === 'member' || m.role === 'viewer') && styles.roleBadgeLight,
+                    ]}>
+                      <Text style={[
+                        styles.roleBadgeText,
+                        (m.role === 'member' || m.role === 'viewer') && styles.roleBadgeTextLight,
+                      ]}>
+                        {ROLE_LABEL[m.role].toUpperCase()}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {pendingInvites.map((inv) => (
+                <View key={inv.id} style={[styles.memberCard, styles.memberCardPending]}>
+                  <View style={styles.memberAvatarWrap}>
+                    <MemberAvatar name={inv.email.substring(0, 2).toUpperCase()} size={44} />
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <Text style={styles.memberName} numberOfLines={1}>{inv.email}</Text>
+                    <Text style={[styles.memberDesc, { color: colors.arena }]}>Invitación pendiente</Text>
+                  </View>
+                  {isAdmin && (
+                    <TouchableOpacity
+                      onPress={() => handleCancelInvite(inv.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                      activeOpacity={0.6}
+                    >
+                      {cancelingInviteId === inv.id
+                        ? <ActivityIndicator size="small" color={colors.gris} />
+                        : <Feather name="x" size={18} color={colors.gris} />
+                      }
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+
+              {/* Invitar miembro */}
+              {isAdmin && (
+                <TouchableOpacity
+                  style={styles.inviteCard}
+                  onPress={() => router.push('/invitar-miembro')}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.inviteIconWrap}>
+                    <Feather name="plus" size={18} color={colors.panel} />
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <Text style={styles.memberName}>Invitar miembro</Text>
+                    <Text style={styles.memberDesc}>Agregar una persona al estudio</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
 
         {/* ─── CONFIGURACIÓN ───────────────────────────────────────────── */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>CONFIGURACIÓN</Text>
-          <View style={styles.grouped}>
-            <TouchableOpacity
-              style={styles.groupedRow}
-              onPress={() => router.push('/configuracion-informe')}
-              activeOpacity={0.75}
-            >
-              <View style={styles.settingsIcon}>
-                <Feather name="file-text" size={15} color={colors.panel} />
-              </View>
-              <Text style={styles.settingsLabel}>Logo del informe</Text>
-              <Feather name="chevron-right" size={16} color={colors.faint} />
-            </TouchableOpacity>
-          </View>
-        </View>
+          <Text style={styles.sectionTitle}>Configuración</Text>
 
-        <View style={styles.break} />
+          <TouchableOpacity
+            style={styles.studioCard}
+            onPress={() => router.push('/configuracion-informe')}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.studioLogoSlot, { backgroundColor: colors.crema }]}>
+              <Feather name="file-text" size={17} color={colors.panel} />
+            </View>
+            <View style={styles.studioCardMeta}>
+              <Text style={styles.studioCardName}>Logo del informe</Text>
+              <Text style={styles.studioCardHint}>Imagen en el encabezado del PDF</Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={colors.faint} />
+          </TouchableOpacity>
+        </View>
 
         {/* ─── CUENTA ──────────────────────────────────────────────────── */}
         <View style={styles.section}>
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.8}>
             <Text style={styles.logoutText}>Cerrar sesión</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.deleteBtn}
-            onPress={() => setDeleteAccountVisible(true)}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.deleteBtn} onPress={() => setDeleteAccountVisible(true)} activeOpacity={0.7}>
             <Text style={styles.deleteBtnText}>Eliminar cuenta</Text>
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.appVersion}>MERIDIANO v1.0.0</Text>
+        <Text style={styles.version}>MERIDIANO v1.0.0</Text>
       </ScrollView>
 
       {/* ── Sheet: editar perfil ── */}
@@ -568,23 +558,18 @@ export default function CuentaScreen() {
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>Editar perfil</Text>
-
           <TouchableOpacity style={styles.sheetMediaRow} onPress={handleAvatarUpload} activeOpacity={0.8} disabled={avatarUploading}>
             <View style={styles.sheetMediaSlot}>
               {avatarUploading
                 ? <ActivityIndicator color={colors.gris} />
-                : <UserAvatar uri={profile?.avatar_url} name={displayName} size={56} />
-              }
+                : <UserAvatar uri={profile?.avatar_url} name={displayName} size={56} />}
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.sheetMediaLabel}>
-                {profile?.avatar_url ? 'Cambiar foto' : 'Agregar foto de perfil'}
-              </Text>
+              <Text style={styles.sheetMediaLabel}>{profile?.avatar_url ? 'Cambiar foto' : 'Agregar foto de perfil'}</Text>
               <Text style={styles.sheetMediaHint}>Cuadrada, PNG o JPG</Text>
             </View>
             <View style={styles.sheetMediaIcon}><Feather name="camera" size={15} color={colors.crema} /></View>
           </TouchableOpacity>
-
           <View style={styles.sheetField}>
             <Text style={styles.sheetFieldLabel}>NOMBRE</Text>
             <TextInput
@@ -598,17 +583,13 @@ export default function CuentaScreen() {
               returnKeyType="done"
             />
           </View>
-
           <TouchableOpacity
             style={[styles.sheetBtn, (!editFullName.trim() || savingProfile) && styles.sheetBtnOff]}
             onPress={handleSaveProfile}
             activeOpacity={0.85}
             disabled={!editFullName.trim() || savingProfile}
           >
-            {savingProfile
-              ? <ActivityIndicator color="#FFF" size="small" />
-              : <Text style={styles.sheetBtnText}>Guardar</Text>
-            }
+            {savingProfile ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.sheetBtnText}>Guardar</Text>}
           </TouchableOpacity>
         </View>
       </BottomSheet>
@@ -618,17 +599,15 @@ export default function CuentaScreen() {
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>Editar estudio</Text>
-
           <TouchableOpacity style={styles.sheetMediaRow} onPress={handleLogoUpload} activeOpacity={0.8} disabled={logoUploading}>
-            <View style={[styles.sheetMediaSlot, { borderRadius: 16 }]}>
+            <View style={[styles.sheetMediaSlot, { borderRadius: 14 }]}>
               {logoUploading
                 ? <ActivityIndicator color={colors.gris} size="small" />
                 : studio?.logo_url
                   ? <Image source={{ uri: studio.logo_url }} style={{ width: 56, height: 56 }} />
                   : <Text style={styles.studioLogoInitials}>
                       {(studio?.name ?? '').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
-                    </Text>
-              }
+                    </Text>}
             </View>
             <View style={{ flex: 1, gap: 2 }}>
               <Text style={styles.sheetMediaLabel}>{studio?.logo_url ? 'Cambiar logo' : 'Agregar logo'}</Text>
@@ -636,7 +615,6 @@ export default function CuentaScreen() {
             </View>
             <View style={styles.sheetMediaIcon}><Feather name="camera" size={15} color={colors.crema} /></View>
           </TouchableOpacity>
-
           <View style={styles.sheetField}>
             <Text style={styles.sheetFieldLabel}>NOMBRE DEL ESTUDIO</Text>
             <TextInput
@@ -650,17 +628,13 @@ export default function CuentaScreen() {
               autoCorrect={false}
             />
           </View>
-
           <TouchableOpacity
             style={[styles.sheetBtn, (!editStudioName.trim() || savingStudio) && styles.sheetBtnOff]}
             onPress={handleSaveStudio}
             activeOpacity={0.85}
             disabled={!editStudioName.trim() || savingStudio}
           >
-            {savingStudio
-              ? <ActivityIndicator color="#FFF" size="small" />
-              : <Text style={styles.sheetBtnText}>Guardar</Text>
-            }
+            {savingStudio ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.sheetBtnText}>Guardar</Text>}
           </TouchableOpacity>
         </View>
       </BottomSheet>
@@ -671,13 +645,12 @@ export default function CuentaScreen() {
           <View style={styles.sheet}>
             <View style={styles.sheetHandle} />
             <View style={styles.memberSheetHead}>
-              <MemberAvatar name={memberSheetMember.full_name || 'U'} size={40} />
+              <MemberAvatar name={memberSheetMember.full_name || 'U'} size={40} dark />
               <View>
                 <Text style={styles.memberSheetName}>{memberSheetMember.full_name || 'Usuario'}</Text>
                 <Text style={styles.memberSheetCurrent}>{ROLE_LABEL[memberSheetMember.role]}</Text>
               </View>
             </View>
-
             <Text style={styles.sheetFieldLabel}>CAMBIAR ROL</Text>
             <View style={styles.roleList}>
               {ROLES_ASSIGNABLE.map((r) => (
@@ -688,7 +661,7 @@ export default function CuentaScreen() {
                   activeOpacity={0.75}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.roleLabel, memberSheetRole === r.value && styles.roleLabelOn]}>{r.label}</Text>
+                    <Text style={styles.roleLabel}>{r.label}</Text>
                     <Text style={styles.roleDesc}>{r.desc}</Text>
                   </View>
                   <View style={[styles.radio, memberSheetRole === r.value && styles.radioOn]}>
@@ -697,19 +670,14 @@ export default function CuentaScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-
             <TouchableOpacity
               style={[styles.sheetBtn, memberActionLoading && styles.sheetBtnOff]}
               onPress={handleSaveMemberRole}
               activeOpacity={0.85}
               disabled={memberActionLoading}
             >
-              {memberActionLoading
-                ? <ActivityIndicator color="#FFF" size="small" />
-                : <Text style={styles.sheetBtnText}>Guardar cambios</Text>
-              }
+              {memberActionLoading ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.sheetBtnText}>Guardar cambios</Text>}
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.removeBtn} onPress={handleRemoveMember} activeOpacity={0.7}>
               <Feather name="user-x" size={14} color={colors.error} />
               <Text style={styles.removeBtnText}>Eliminar del estudio</Text>
@@ -718,14 +686,14 @@ export default function CuentaScreen() {
         )}
       </BottomSheet>
 
-      {/* ── Sheet: confirmar eliminar cuenta ── */}
+      {/* ── Sheet: eliminar cuenta ── */}
       <BottomSheet visible={deleteAccountVisible} onClose={() => setDeleteAccountVisible(false)}>
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
-          <View style={styles.deleteIcon}>
+          <View style={{ alignItems: 'center', paddingTop: 8 }}>
             <Feather name="alert-triangle" size={30} color={colors.error} />
           </View>
-          <Text style={styles.deleteTitle}>Eliminar cuenta</Text>
+          <Text style={[styles.sheetTitle, { textAlign: 'center' }]}>Eliminar cuenta</Text>
           <Text style={styles.deleteBody}>
             Esta acción es permanente. Se eliminarán tu cuenta y todos tus datos. No se puede deshacer.
           </Text>
@@ -735,13 +703,10 @@ export default function CuentaScreen() {
             activeOpacity={0.85}
             disabled={deletingAccount}
           >
-            {deletingAccount
-              ? <ActivityIndicator color="#FFF" size="small" />
-              : <Text style={styles.deleteConfirmText}>Sí, eliminar mi cuenta</Text>
-            }
+            {deletingAccount ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.deleteConfirmText}>Sí, eliminar mi cuenta</Text>}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteCancelBtn} onPress={() => setDeleteAccountVisible(false)} activeOpacity={0.7}>
-            <Text style={styles.deleteCancelText}>Cancelar</Text>
+          <TouchableOpacity style={{ alignItems: 'center', paddingVertical: 12 }} onPress={() => setDeleteAccountVisible(false)} activeOpacity={0.7}>
+            <Text style={{ fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.gris }}>Cancelar</Text>
           </TouchableOpacity>
         </View>
       </BottomSheet>
@@ -752,15 +717,14 @@ export default function CuentaScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.tinta },
 
-  // ── Profile block ─────────────────────────────────────────────────────
+  // ── Profile ───────────────────────────────────────────────────────────
   profileBlock: {
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
-    gap: 16,
   },
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  avatarTouchable: { position: 'relative', flexShrink: 0 },
+  profileRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  avatarWrap: { position: 'relative', flexShrink: 0 },
   avatarFallback: {
     backgroundColor: colors.chip,
     alignItems: 'center',
@@ -773,383 +737,227 @@ const styles = StyleSheet.create({
   },
   cameraBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    bottom: 2, right: 2,
+    width: 26, height: 26, borderRadius: 13,
     backgroundColor: colors.crema,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.tinta,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2.5, borderColor: colors.tinta,
   },
-  profileInfo: { flex: 1, gap: 3 },
+  profileInfo: { flex: 1, paddingTop: 4, gap: 3 },
   profileName: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 22,
-    color: colors.crema,
-    letterSpacing: -0.5,
+    fontFamily: fonts.archivo.bold, fontSize: 26,
+    color: colors.crema, letterSpacing: -0.6, lineHeight: 30,
   },
   profileEmail: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 13,
-    color: colors.gris,
+    fontFamily: fonts.archivo.semibold, fontSize: 13.5, color: colors.gris,
   },
-  circleBtn: {
+  profileEditLink: {
+    fontFamily: fonts.archivo.semibold, fontSize: 13.5,
+    color: colors.crema, textDecorationLine: 'underline',
+    marginTop: 2,
+  },
+  bellBtn: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: colors.panel,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-    flexShrink: 0,
-  },
-  editPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    alignSelf: 'flex-start',
-    height: 32,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-    backgroundColor: colors.chip,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  editPillText: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 12.5,
-    color: colors.gris,
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    marginTop: 4, flexShrink: 0,
   },
 
-  // ── Section break ─────────────────────────────────────────────────────
-  break: {
+  // ── Plan card ─────────────────────────────────────────────────────────
+  planPad: { paddingHorizontal: spacing.xl, paddingBottom: spacing.lg },
+  planCard: {
+    borderRadius: 22,
+    backgroundColor: colors.crema,
+    padding: 20,
+    gap: 14,
+  },
+  planTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tuPlanLabel: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.4,
+    textTransform: 'uppercase', color: 'rgba(255,255,255,0.45)', fontWeight: '700',
+  },
+  statusPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    height: 30, paddingHorizontal: 12, borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  statusPillAlert: { backgroundColor: 'rgba(192,69,53,0.25)' },
+  statusDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.arena },
+  statusDotAlert: { backgroundColor: colors.error },
+  statusText: {
+    fontFamily: fonts.archivo.semibold, fontSize: 12.5, color: 'rgba(255,255,255,0.85)',
+  },
+  planNameRow: { flexDirection: 'row', alignItems: 'baseline', gap: 0, marginTop: -4 },
+  planName: {
+    fontFamily: fonts.archivo.bold, fontSize: 34,
+    color: '#FFFFFF', letterSpacing: -0.8, lineHeight: 38,
+  },
+  planPrice: {
+    fontFamily: fonts.archivo.semibold, fontSize: 16,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  usageBlock: { gap: 8 },
+  usageRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  usageLabel: {
+    fontFamily: fonts.archivo.semibold, fontSize: 13, color: 'rgba(255,255,255,0.55)',
+  },
+  usageCount: {
+    fontFamily: fonts.archivo.bold, fontSize: 13, color: 'rgba(255,255,255,0.55)',
+  },
+  progressTrack: {
+    height: 5, borderRadius: 2.5,
+    backgroundColor: 'rgba(255,255,255,0.18)', overflow: 'hidden',
+  },
+  progressFill: {
+    height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.7)',
+  },
+  renewText: {
+    fontFamily: fonts.archivo.semibold, fontSize: 12.5,
+    color: 'rgba(255,255,255,0.4)', marginTop: -4,
+  },
+  planInternalDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  planAction: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 2,
+  },
+  planActionText: {
+    fontFamily: fonts.archivo.bold, fontSize: 16, color: '#FFFFFF',
+  },
+
+  // ── Separator ────────────────────────────────────────────────────────
+  separator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
     marginHorizontal: spacing.xl,
-    marginVertical: 24,
+    marginBottom: 28,
   },
 
   // ── Sections ──────────────────────────────────────────────────────────
   section: {
     paddingHorizontal: spacing.xl,
-    paddingBottom: 4,
-    gap: 12,
-  },
-  sectionTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  sectionLabel: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    color: colors.gris,
-    fontWeight: '700',
-  },
-  sectionAction: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 13,
-    color: colors.arena,
-  },
-  studioTitle: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 17,
-    color: colors.crema,
-    letterSpacing: -0.3,
-    marginTop: 2,
-  },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    height: 32,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: colors.crema,
-  },
-  addBtnText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 12,
-    color: colors.panel,
-  },
-
-  // ── Plan card ─────────────────────────────────────────────────────────
-  planCard: {
-    borderRadius: 20,
-    backgroundColor: colors.crema,
-    padding: 20,
-    gap: 16,
-  },
-  planCardRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-  },
-  planName: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 22,
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  planPrice: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 3,
-  },
-  statusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    height: 30,
-    paddingHorizontal: 12,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-  },
-  statusText: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  planPeriodText: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 12.5,
-    color: 'rgba(255,255,255,0.45)',
-    marginTop: -8,
-  },
-  usageBlock: { gap: 8 },
-  usageRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  usageLabel: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 12.5,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  usageCount: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 12.5,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  progressTrack: {
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#FFFFFF',
-  },
-
-  // ── Studio row ────────────────────────────────────────────────────────
-  studioRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingBottom: 32,
     gap: 14,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: colors.panel,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+  },
+  sectionTitle: {
+    fontFamily: fonts.archivo.bold, fontSize: 22,
+    color: colors.crema, letterSpacing: -0.5,
+  },
+  sectionSubtitle: {
+    fontFamily: fonts.archivo.semibold, fontSize: 13,
+    color: colors.gris, marginTop: -6,
+  },
+
+  // ── Studio card ───────────────────────────────────────────────────────
+  studioCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 14, borderRadius: 18, backgroundColor: colors.panel,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
+  },
+  createStudioCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 14, borderRadius: 18,
+    borderWidth: 1.5, borderColor: colors.border, borderStyle: 'dashed',
   },
   studioLogoSlot: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 48, height: 48, borderRadius: 12,
     backgroundColor: colors.chip,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden', flexShrink: 0,
   },
   studioLogoImg: { width: '100%', height: '100%' },
   studioLogoInitials: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 17,
-    color: colors.crema,
-    letterSpacing: -0.5,
+    fontFamily: fonts.archivo.bold, fontSize: 16,
+    color: colors.crema, letterSpacing: -0.4,
   },
-  studioRowName: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 15,
-    color: colors.crema,
+  studioCardMeta: { flex: 1, gap: 2 },
+  studioCardName: {
+    fontFamily: fonts.archivo.bold, fontSize: 15, color: colors.crema,
   },
-  studioRowHint: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 12,
-    color: colors.faint,
-    marginTop: 2,
+  studioCardHint: {
+    fontFamily: fonts.archivo.semibold, fontSize: 12.5, color: colors.gris,
   },
 
-  // ── Grouped container ─────────────────────────────────────────────────
-  grouped: {
-    borderRadius: 18,
-    backgroundColor: colors.panel,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
+  // ── Member cards ──────────────────────────────────────────────────────
+  memberCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 14, borderRadius: 18, backgroundColor: colors.panel,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
   },
-  groupedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    minHeight: 60,
-  },
-  groupedDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginLeft: 64, // lines up after avatar
-  },
-  memberAvatarWrap: {
-    backgroundColor: colors.chip,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  memberAvatarText: {
-    fontFamily: fonts.archivo.bold,
-    color: colors.crema,
-  },
-  memberName: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 14,
-    color: colors.crema,
-  },
-  memberRole: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 12,
-    color: colors.gris,
-    marginTop: 2,
-  },
-  inviteIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.chip,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-
-  // ── Settings rows ─────────────────────────────────────────────────────
-  settingsIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 9,
+  memberCardPending: { opacity: 0.8 },
+  memberAvatarWrap: { flexShrink: 0 },
+  memberAvatarBase: { alignItems: 'center', justifyContent: 'center' },
+  memberAvatarDark: { backgroundColor: colors.crema },
+  memberAvatarLight: { backgroundColor: colors.chip },
+  memberAvatarText: { fontFamily: fonts.archivo.bold, letterSpacing: -0.3 },
+  memberAvatarTextDark: { color: colors.panel },
+  memberAvatarTextLight: { color: colors.crema },
+  memberInfo: { flex: 1, gap: 2 },
+  memberNameRow: { flexDirection: 'row', alignItems: 'center' },
+  memberName: { fontFamily: fonts.archivo.bold, fontSize: 14.5, color: colors.crema },
+  memberYou: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.gris },
+  memberDesc: { fontFamily: fonts.archivo.semibold, fontSize: 12.5, color: colors.gris },
+  roleBadge: {
+    height: 28, borderRadius: 14, paddingHorizontal: 10,
     backgroundColor: colors.crema,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
   },
-  settingsLabel: {
-    flex: 1,
-    fontFamily: fonts.archivo.bold,
-    fontSize: 14,
-    color: colors.crema,
+  roleBadgeLight: { backgroundColor: colors.chip },
+  roleBadgeText: {
+    fontFamily: fonts.archivo.bold, fontSize: 10.5,
+    color: colors.panel, letterSpacing: 0.3,
+  },
+  roleBadgeTextLight: { color: colors.gris },
+
+  // ── Invite row ────────────────────────────────────────────────────────
+  inviteCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 14, borderRadius: 18, backgroundColor: colors.panel,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
+  },
+  inviteIconWrap: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: colors.crema,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
 
-  // ── Create studio ─────────────────────────────────────────────────────
-  createStudioBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-  },
-  createStudioText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 14,
-    color: colors.crema,
-  },
-
-  // ── Account buttons ───────────────────────────────────────────────────
+  // ── Account ───────────────────────────────────────────────────────────
   logoutBtn: {
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 1.5,
-    borderColor: colors.border,
+    height: 52, borderRadius: 26,
+    borderWidth: 1.5, borderColor: colors.border,
     backgroundColor: colors.panel,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
-  logoutText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 14.5,
-    color: colors.gris,
-  },
-  deleteBtn: {
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  deleteBtnText: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 13,
-    color: colors.error,
-  },
+  logoutText: { fontFamily: fonts.archivo.bold, fontSize: 14.5, color: colors.gris },
+  deleteBtn: { alignItems: 'center', paddingVertical: 12 },
+  deleteBtnText: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.error },
 
-  appVersion: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    color: colors.faint,
-    textAlign: 'center',
-    marginTop: spacing.md,
-    marginBottom: spacing.xl,
+  version: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 0.8,
+    textTransform: 'uppercase', color: colors.faint,
+    textAlign: 'center', marginBottom: spacing.xl,
   },
 
   // ── Sheets ────────────────────────────────────────────────────────────
   sheet: {
-    backgroundColor: colors.panel,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: 36,
-    paddingTop: 12,
-    gap: spacing.lg,
+    backgroundColor: colors.panel, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: spacing.xl, paddingBottom: 36, paddingTop: 12, gap: spacing.lg,
   },
   sheetHandle: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: colors.border,
-    alignSelf: 'center', marginBottom: 4,
+    backgroundColor: colors.border, alignSelf: 'center', marginBottom: 4,
   },
-  sheetTitle: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 18,
-    color: colors.crema,
-    letterSpacing: -0.3,
-  },
+  sheetTitle: { fontFamily: fonts.archivo.bold, fontSize: 18, color: colors.crema, letterSpacing: -0.3 },
   sheetMediaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: colors.chip,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 14, borderRadius: 18, backgroundColor: colors.chip,
   },
   sheetMediaSlot: {
     width: 56, height: 56, borderRadius: 28,
@@ -1157,29 +965,16 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     overflow: 'hidden', flexShrink: 0,
   },
-  sheetMediaLabel: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 14,
-    color: colors.crema,
-  },
-  sheetMediaHint: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 11.5,
-    color: colors.gris,
-  },
+  sheetMediaLabel: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema },
+  sheetMediaHint: { fontFamily: fonts.archivo.semibold, fontSize: 11.5, color: colors.gris },
   sheetMediaIcon: {
     width: 34, height: 34, borderRadius: 17,
-    backgroundColor: colors.panel,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.panel, alignItems: 'center', justifyContent: 'center',
   },
   sheetField: { gap: spacing.sm },
   sheetFieldLabel: {
-    fontFamily: fonts.mono.regular,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    color: colors.gris,
-    fontWeight: '700',
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700',
   },
   sheetInput: {
     height: 52, borderRadius: 16, backgroundColor: colors.chip,
@@ -1187,116 +982,42 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.semibold, fontSize: 15, color: colors.crema,
   },
   sheetBtn: {
-    height: 54, borderRadius: 27,
-    backgroundColor: colors.crema,
+    height: 54, borderRadius: 27, backgroundColor: colors.crema,
     alignItems: 'center', justifyContent: 'center',
   },
   sheetBtnOff: { opacity: 0.35 },
-  sheetBtnText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1,
-  },
+  sheetBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF', letterSpacing: 0.1 },
 
   // ── Member sheet ──────────────────────────────────────────────────────
-  memberSheetHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  memberSheetName: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 16,
-    color: colors.crema,
-    letterSpacing: -0.2,
-  },
-  memberSheetCurrent: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 12.5,
-    color: colors.gris,
-  },
+  memberSheetHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  memberSheetName: { fontFamily: fonts.archivo.bold, fontSize: 16, color: colors.crema, letterSpacing: -0.2 },
+  memberSheetCurrent: { fontFamily: fonts.archivo.semibold, fontSize: 12.5, color: colors.gris },
   roleList: { gap: 8 },
   roleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: colors.chip,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: 14, borderRadius: 16,
+    backgroundColor: colors.chip, borderWidth: 1.5, borderColor: 'transparent',
   },
-  roleRowOn: {
-    borderColor: colors.crema,
-    backgroundColor: colors.panel,
-  },
-  roleLabel: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 13.5,
-    color: colors.crema,
-  },
-  roleLabelOn: { color: colors.crema },
-  roleDesc: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 12,
-    color: colors.gris,
-    marginTop: 1,
-  },
+  roleRowOn: { borderColor: colors.crema, backgroundColor: colors.panel },
+  roleLabel: { fontFamily: fonts.archivo.bold, fontSize: 13.5, color: colors.crema },
+  roleDesc: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.gris, marginTop: 1 },
   radio: {
     width: 20, height: 20, borderRadius: 10,
-    borderWidth: 2, borderColor: colors.faint,
-    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: colors.faint, alignItems: 'center', justifyContent: 'center',
   },
   radioOn: { borderColor: colors.crema },
-  radioDot: {
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: colors.crema,
-  },
-  removeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-  },
-  removeBtnText: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 13.5,
-    color: colors.error,
-  },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.crema },
+  removeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12 },
+  removeBtnText: { fontFamily: fonts.archivo.semibold, fontSize: 13.5, color: colors.error },
 
   // ── Delete account sheet ──────────────────────────────────────────────
-  deleteIcon: { alignItems: 'center', paddingTop: 8 },
-  deleteTitle: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 20,
-    color: colors.crema,
-    letterSpacing: -0.4,
-    textAlign: 'center',
-  },
   deleteBody: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 14,
-    color: colors.gris,
-    lineHeight: 21,
-    textAlign: 'center',
+    fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.gris,
+    lineHeight: 21, textAlign: 'center',
   },
   deleteConfirmBtn: {
-    height: 54, borderRadius: 27,
-    backgroundColor: colors.error,
+    height: 54, borderRadius: 27, backgroundColor: colors.error,
     alignItems: 'center', justifyContent: 'center',
   },
-  deleteConfirmText: {
-    fontFamily: fonts.archivo.bold,
-    fontSize: 15,
-    color: '#FFFFFF',
-  },
-  deleteCancelBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  deleteCancelText: {
-    fontFamily: fonts.archivo.semibold,
-    fontSize: 14,
-    color: colors.gris,
-  },
+  deleteConfirmText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFFFFF' },
 });

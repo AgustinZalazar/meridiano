@@ -43,6 +43,7 @@ function RootLayoutNav() {
       }}
     >
       <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(auth)/registro-invitado" options={{ animation: 'slide_from_right' }} />
       <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="proyecto/[id]" />
