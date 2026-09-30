@@ -23,6 +23,7 @@ interface DbPending {
   projects: { name: string } | null;
   rubros: { name: string } | null;
   reports: { type: ReportType } | null;
+  profiles: { full_name: string } | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ function PendienteCard({ item, onPress, onComplete, index }: {
   const statusColor  = STATUS_COLOR[item.status];
   const projectName  = item.projects?.name ?? '—';
   const rubroName    = item.rubros?.name ?? null;
+  const creatorName  = item.profiles?.full_name ?? null;
   const enterAnim    = useRef(new Animated.Value(0)).current;
   const dismissAnim  = useRef(new Animated.Value(1)).current;
   const [dismissing, setDismissing] = useState(false);
@@ -121,9 +123,6 @@ function PendienteCard({ item, onPress, onComplete, index }: {
             <Text style={[styles.statusLabel, { color: statusColor }]}>
               {STATUS_LABEL[item.status].toUpperCase()}
             </Text>
-            {item.source === 'ai' && (
-              <Text style={styles.aiTag}>· IA</Text>
-            )}
           </View>
           <Text style={styles.cardDate}>{formatItemDate(item.created_at)}</Text>
         </View>
@@ -131,29 +130,34 @@ function PendienteCard({ item, onPress, onComplete, index }: {
         {/* Description */}
         <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
 
-        {/* Footer: meta + trade chip + complete button */}
-        <View style={styles.cardFooter}>
-          <Text style={styles.cardMeta} numberOfLines={1}>
-            {projectName}{rubroName ? ` · ${rubroName}` : ''}
-          </Text>
-          <View style={styles.cardActions}>
-            {item.trade ? (
-              <View style={styles.tradeChip}>
-                <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
-              </View>
-            ) : null}
-            {item.status !== 'resuelto' && (
-              <TouchableOpacity
-                style={styles.completeBtn}
-                onPress={(e) => { e.stopPropagation(); handleComplete(); }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                activeOpacity={0.7}
-              >
-                <Feather name="check" size={13} color={colors.success} />
-                <Text style={styles.completeBtnText}>Completar</Text>
-              </TouchableOpacity>
-            )}
+        {/* Meta: project */}
+        <Text style={styles.cardMeta} numberOfLines={1}>{projectName}</Text>
+
+        {/* Tags: rubro */}
+        {rubroName && (
+          <View style={styles.cardTagsRow}>
+            <View style={styles.rubroChip}>
+              <Text style={styles.rubroChipText}>{rubroName}</Text>
+            </View>
           </View>
+        )}
+
+        {/* Footer: creator + complete button */}
+        <View style={styles.cardFooter}>
+          <Text style={styles.cardCreator} numberOfLines={1}>
+            {creatorName ? `por ${creatorName}` : ''}
+          </Text>
+          {item.status !== 'resuelto' && (
+            <TouchableOpacity
+              style={styles.completeBtn}
+              onPress={(e) => { e.stopPropagation(); handleComplete(); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.7}
+            >
+              <Feather name="check" size={13} color={colors.success} />
+              <Text style={styles.completeBtnText}>Completar</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -183,7 +187,7 @@ export default function PendientesScreen() {
     setLoading(true);
     const { data } = await supabase
       .from('pending_items')
-      .select('id, description, trade, status, source, created_at, projects(name), rubros(name), reports(type)')
+      .select('id, description, trade, status, source, created_at, projects(name), rubros(name), reports(type), profiles!created_by(full_name)')
       .order('created_at', { ascending: false });
     setItems((data as DbPending[]) ?? []);
     setLoading(false);
@@ -344,17 +348,18 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusLabel: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1.2 },
-  aiTag: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 0.5, color: colors.faint },
-  cardDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.gris, letterSpacing: 0.3 },
+  cardDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3 },
   cardDesc: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, lineHeight: 20 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  cardMeta: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3, flex: 1 },
-  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
-  tradeChip: {
-    height: 20, borderRadius: 10, paddingHorizontal: 8,
-    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+  cardMeta: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3 },
+  cardTagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  rubroChip: {
+    paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10,
+    backgroundColor: 'rgba(217,119,87,0.12)', borderWidth: 1, borderColor: 'rgba(217,119,87,0.22)',
+    alignSelf: 'flex-start',
   },
-  tradeText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
+  rubroChipText: { fontFamily: fonts.archivo.bold, fontSize: 9.5, letterSpacing: 0.2, color: colors.arena },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  cardCreator: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: '#3A3A36', letterSpacing: 0.2, flex: 1 },
   completeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     height: 24, paddingHorizontal: 10, borderRadius: 12,

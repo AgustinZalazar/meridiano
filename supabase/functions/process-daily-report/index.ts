@@ -188,6 +188,7 @@ Especialidades válidas: albanilería, electricidad, plomería, carpintería, pi
           trade:       item.trade ? String(item.trade).slice(0, 100) : null,
           status:      'pendiente',
           source:      'ai',
+          created_by:  user.id,
         }))
       );
       if (itemsErr) throw new Error(`Error al insertar pendientes: ${itemsErr.message}`);

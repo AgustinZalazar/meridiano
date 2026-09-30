@@ -175,6 +175,7 @@ Devolvé el listado actualizado aplicando las instrucciones. Reglas:
           trade: item.trade,
           status: item.status ?? 'pendiente',
           source: 'ai',
+          created_by: user.id,
         }))
       );
       if (error) throw new Error(`Error al insertar ítems: ${error.message}`);

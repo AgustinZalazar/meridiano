@@ -91,8 +91,10 @@ interface DbPendingItem {
   rubro_id: string;
   trade: string | null;
   status: PendingStatus;
+  source: 'ai' | 'manual';
   reports: { type: ReportType } | null;
   created_at: string;
+  profiles: { full_name: string } | null;
 }
 
 interface DbPlano {
@@ -270,6 +272,7 @@ function PendienteCard({ item, rubroName, index, onPress, onComplete }: {
   onComplete: () => void;
 }) {
   const statusColor  = PENDING_STATUS_COLOR[item.status];
+  const creatorName  = item.profiles?.full_name ?? null;
   const enterAnim    = useRef(new Animated.Value(0)).current;
   const dismissAnim  = useRef(new Animated.Value(1)).current;
   const [dismissing, setDismissing] = useState(false);
@@ -315,27 +318,30 @@ function PendienteCard({ item, rubroName, index, onPress, onComplete }: {
       </View>
       {/* Description */}
       <Text style={styles.pendDesc} numberOfLines={2}>{item.description}</Text>
-      {/* Footer: rubro + trade chip + complete button */}
-      <View style={styles.pendCardFooter}>
-        <Text style={styles.pendObra} numberOfLines={1}>{rubroName}</Text>
-        <View style={styles.pendCardActions}>
-          {item.trade ? (
-            <View style={styles.tradeChip}>
-              <Text style={styles.tradeText}>{item.trade.toUpperCase()}</Text>
-            </View>
-          ) : null}
-          {item.status !== 'resuelto' && (
-            <TouchableOpacity
-              style={styles.pendCompleteBtn}
-              onPress={(e) => { e.stopPropagation(); handleComplete(); }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              activeOpacity={0.7}
-            >
-              <Feather name="check" size={13} color={colors.success} />
-              <Text style={styles.pendCompleteBtnText}>Completar</Text>
-            </TouchableOpacity>
-          )}
+
+      {/* Tags: rubro */}
+      <View style={styles.pendTagsRow}>
+        <View style={styles.pendRubroChip}>
+          <Text style={styles.pendRubroChipText}>{rubroName}</Text>
         </View>
+      </View>
+
+      {/* Footer: creator + complete button */}
+      <View style={styles.pendCardFooter}>
+        <Text style={styles.pendCreator} numberOfLines={1}>
+          {creatorName ? `por ${creatorName}` : ''}
+        </Text>
+        {item.status !== 'resuelto' && (
+          <TouchableOpacity
+            style={styles.pendCompleteBtn}
+            onPress={(e) => { e.stopPropagation(); handleComplete(); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}
+          >
+            <Feather name="check" size={13} color={colors.success} />
+            <Text style={styles.pendCompleteBtnText}>Completar</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </TouchableOpacity>
     </Animated.View>
@@ -468,7 +474,7 @@ export default function ProyectoScreen() {
       Promise.all([
         supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date, status, property_type, tipo_obra, m2_cubiertos, m2_totales, m2_terreno, pisos, unidades, dormitorios, banos, ambientes, cocheras, amenities, direccion, comitente, anio_proyecto').eq('id', projectId).single(),
         supabase.from('rubros').select('id, code, name, contractor, status, start_date, end_date, actual_start_date, actual_end_date').eq('project_id', projectId).order('created_at'),
-        supabase.from('pending_items').select('id, description, rubro_id, trade, status, reports(type), created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
+        supabase.from('pending_items').select('id, description, rubro_id, trade, status, source, reports(type), created_at, profiles!created_by(full_name)').eq('project_id', projectId).order('created_at', { ascending: false }),
         supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
       ]).then(([projRes, rubrosRes, pendRes, planosRes]) => {
         if (projRes.data) {
@@ -1170,14 +1176,15 @@ const styles = StyleSheet.create({
   pendStatusDot: { width: 6, height: 6, borderRadius: 3 },
   pendStatusLabel: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1.2 },
   pendDesc: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, lineHeight: 20 },
-  pendObra: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.gris, letterSpacing: 0.3, flex: 1 },
-  pendCardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  pendCardActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
-  tradeChip: {
-    height: 20, borderRadius: 10, paddingHorizontal: 8,
-    backgroundColor: colors.chip, alignItems: 'center', justifyContent: 'center',
+  pendTagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  pendRubroChip: {
+    paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10,
+    backgroundColor: 'rgba(217,119,87,0.12)', borderWidth: 1, borderColor: 'rgba(217,119,87,0.22)',
+    alignSelf: 'flex-start',
   },
-  tradeText: { fontFamily: fonts.archivo.bold, fontSize: 9, letterSpacing: 0.3, color: colors.crema },
+  pendRubroChipText: { fontFamily: fonts.archivo.bold, fontSize: 9.5, letterSpacing: 0.2, color: colors.arena },
+  pendCardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  pendCreator: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: '#3A3A36', letterSpacing: 0.2, flex: 1 },
   pendCompleteBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     height: 24, paddingHorizontal: 10, borderRadius: 12,
