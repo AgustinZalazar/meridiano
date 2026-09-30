@@ -275,6 +275,7 @@ function PendienteCard({ item, rubroName, index, onPress, onComplete }: {
   const creatorName  = item.profiles?.full_name ?? null;
   const enterAnim    = useRef(new Animated.Value(0)).current;
   const dismissAnim  = useRef(new Animated.Value(1)).current;
+  const pulseAnim    = useRef(new Animated.Value(0)).current;
   const [dismissing, setDismissing] = useState(false);
 
   useEffect(() => {
@@ -283,6 +284,21 @@ function PendienteCard({ item, rubroName, index, onPress, onComplete }: {
       Animated.timing(enterAnim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
   }, []);
+
+  useEffect(() => {
+    if (item.status !== 'pendiente') return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.delay(600),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [item.status]);
+
+  const pulseOpacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
+  const pulseScale   = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 2.8] });
 
   function handleComplete() {
     setDismissing(true);
@@ -309,7 +325,15 @@ function PendienteCard({ item, rubroName, index, onPress, onComplete }: {
       {/* Top row: status dot + label + date */}
       <View style={styles.pendTopRow}>
         <View style={styles.pendStatusRow}>
-          <View style={[styles.pendStatusDot, { backgroundColor: statusColor }]} />
+          <View style={styles.pendStatusDotWrap}>
+            {item.status === 'pendiente' && (
+              <Animated.View style={[
+                styles.pendStatusDotRipple,
+                { backgroundColor: statusColor, opacity: pulseOpacity, transform: [{ scale: pulseScale }] },
+              ]} />
+            )}
+            <View style={[styles.pendStatusDot, { backgroundColor: statusColor }]} />
+          </View>
           <Text style={[styles.pendStatusLabel, { color: statusColor }]}>
             {PENDING_STATUS_LABEL[item.status].toUpperCase()}
           </Text>
@@ -701,7 +725,19 @@ export default function ProyectoScreen() {
         <FlatList
           data={rubros}
           keyExtractor={(item) => item.id}
-          ListHeaderComponent={<PropertyProfileCard project={project} />}
+          ListHeaderComponent={
+            <>
+              <PropertyProfileCard project={project} />
+              <TouchableOpacity
+                style={styles.addBtn}
+                activeOpacity={0.85}
+                onPress={() => router.push({ pathname: '/rubro/nueva', params: { projectId: project.id } })}
+              >
+                <Feather name="plus" size={16} color={colors.crema} />
+                <Text style={styles.addBtnText}>Nuevo rubro</Text>
+              </TouchableOpacity>
+            </>
+          }
           renderItem={({ item, index }) => (
             <RubroCard
               rubro={item}
@@ -737,16 +773,6 @@ export default function ProyectoScreen() {
               <Feather name="layers" size={28} color={colors.faint} />
               <Text style={styles.emptyText}>Sin rubros cargados</Text>
             </View>
-          }
-          ListFooterComponent={
-            <TouchableOpacity
-              style={styles.addBtn}
-              activeOpacity={0.85}
-              onPress={() => router.push({ pathname: '/rubro/nueva', params: { projectId: project.id } })}
-            >
-              <Feather name="plus" size={16} color={colors.crema} />
-              <Text style={styles.addBtnText}>Nuevo rubro</Text>
-            </TouchableOpacity>
           }
         />
       )}
@@ -1034,6 +1060,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#12151A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 14, elevation: 5,
   },
+  circleBtnAccent: {
+    backgroundColor: colors.crema,
+    shadowColor: colors.crema,
+    shadowOpacity: 0.25,
+  },
 
   banner: {
     height: 230, backgroundColor: colors.chip,
@@ -1173,6 +1204,8 @@ const styles = StyleSheet.create({
   },
   pendTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   pendStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pendStatusDotWrap: { width: 10, height: 10, alignItems: 'center', justifyContent: 'center' },
+  pendStatusDotRipple: { position: 'absolute', width: 6, height: 6, borderRadius: 3 },
   pendStatusDot: { width: 6, height: 6, borderRadius: 3 },
   pendStatusLabel: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1.2 },
   pendDesc: { fontFamily: fonts.archivo.bold, fontSize: 14, color: colors.crema, lineHeight: 20 },

@@ -85,6 +85,7 @@ function PendienteCard({ item, onPress, onComplete, index }: {
   const creatorName  = item.profiles?.full_name ?? null;
   const enterAnim    = useRef(new Animated.Value(0)).current;
   const dismissAnim  = useRef(new Animated.Value(1)).current;
+  const pulseAnim    = useRef(new Animated.Value(0)).current;
   const [dismissing, setDismissing] = useState(false);
 
   useEffect(() => {
@@ -93,6 +94,21 @@ function PendienteCard({ item, onPress, onComplete, index }: {
       Animated.timing(enterAnim, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
   }, []);
+
+  useEffect(() => {
+    if (item.status !== 'pendiente') return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1100, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.delay(600),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [item.status]);
+
+  const pulseOpacity = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
+  const pulseScale   = pulseAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 2.8] });
 
   function handleComplete() {
     setDismissing(true);
@@ -119,7 +135,15 @@ function PendienteCard({ item, onPress, onComplete, index }: {
         {/* Top row: status indicator + date */}
         <View style={styles.cardTopRow}>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <View style={styles.statusDotWrap}>
+              {item.status === 'pendiente' && (
+                <Animated.View style={[
+                  styles.statusDotRipple,
+                  { backgroundColor: statusColor, opacity: pulseOpacity, transform: [{ scale: pulseScale }] },
+                ]} />
+              )}
+              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            </View>
             <Text style={[styles.statusLabel, { color: statusColor }]}>
               {STATUS_LABEL[item.status].toUpperCase()}
             </Text>
@@ -174,13 +198,13 @@ export default function PendientesScreen() {
   const [loading, setLoading] = useState(true);
   const [filterVisible, setFilterVisible] = useState(false);
   const [statusFilter, setStatusFilter] = useState<PendingStatus | 'all' | 'active'>('active');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'ai' | 'manual'>('all');
+  const [projectFilter, setProjectFilter] = useState<string | 'all'>('all');
 
-  const hasActiveFilters = statusFilter !== 'active' || sourceFilter !== 'all';
+  const hasActiveFilters = statusFilter !== 'active' || projectFilter !== 'all';
 
   function resetFilters() {
     setStatusFilter('active');
-    setSourceFilter('all');
+    setProjectFilter('all');
   }
 
   const fetchPendientes = useCallback(async () => {
@@ -195,12 +219,14 @@ export default function PendientesScreen() {
 
   useEffect(() => { fetchPendientes(); }, [fetchPendientes]);
 
+  const projectNames = [...new Set(items.map(p => p.projects?.name).filter(Boolean) as string[])].sort();
+
   const filtered = items.filter((p) => {
     const type = p.reports?.type;
     if (type && type !== activeType) return false;
     if (statusFilter === 'active' && p.status === 'resuelto') return false;
     if (statusFilter !== 'all' && statusFilter !== 'active' && p.status !== statusFilter) return false;
-    if (sourceFilter !== 'all' && p.source !== sourceFilter) return false;
+    if (projectFilter !== 'all' && p.projects?.name !== projectFilter) return false;
     return true;
   });
 
@@ -285,19 +311,30 @@ export default function PendientesScreen() {
             ))}
           </View>
 
-          <Text style={styles.sheetGroupLabel}>FUENTE</Text>
-          <View style={styles.chipRow}>
-            {([['all', 'Todos'], ['ai', 'IA'], ['manual', 'Manual']] as const).map(([val, label]) => (
-              <TouchableOpacity
-                key={val}
-                style={[styles.filterChip, sourceFilter === val && styles.filterChipActive]}
-                onPress={() => setSourceFilter(val)}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.filterChipText, sourceFilter === val && styles.filterChipTextActive]}>{label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {projectNames.length > 1 && (
+            <>
+              <Text style={styles.sheetGroupLabel}>PROYECTO</Text>
+              <View style={styles.chipRow}>
+                <TouchableOpacity
+                  style={[styles.filterChip, projectFilter === 'all' && styles.filterChipActive]}
+                  onPress={() => setProjectFilter('all')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.filterChipText, projectFilter === 'all' && styles.filterChipTextActive]}>Todos</Text>
+                </TouchableOpacity>
+                {projectNames.map((name) => (
+                  <TouchableOpacity
+                    key={name}
+                    style={[styles.filterChip, projectFilter === name && styles.filterChipActive]}
+                    onPress={() => setProjectFilter(name)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.filterChipText, projectFilter === name && styles.filterChipTextActive]}>{name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
 
           <TouchableOpacity style={styles.sheetApplyBtn} onPress={() => setFilterVisible(false)} activeOpacity={0.85}>
             <Text style={styles.sheetApplyText}>
@@ -346,6 +383,8 @@ const styles = StyleSheet.create({
   },
   cardTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusDotWrap: { width: 10, height: 10, alignItems: 'center', justifyContent: 'center' },
+  statusDotRipple: { position: 'absolute', width: 6, height: 6, borderRadius: 3 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusLabel: { fontFamily: fonts.mono.regular, fontSize: 9, letterSpacing: 1.2 },
   cardDate: { fontFamily: fonts.mono.regular, fontSize: 9, color: colors.faint, letterSpacing: 0.3 },

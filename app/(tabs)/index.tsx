@@ -122,21 +122,6 @@ function StatusPill({ rubros }: { rubros: { status: string }[] }) {
   );
 }
 
-function SearchBarFade({ children }: { children: any }) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(anim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-  }, []);
-  return (
-    <Animated.View style={{
-      flex: 1,
-      opacity: anim,
-      transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
-    }}>
-      {children}
-    </Animated.View>
-  );
-}
 
 function SkeletonCard() {
   const shimmer = useRef(new Animated.Value(0)).current;
@@ -263,7 +248,6 @@ export default function ProyectosScreen() {
       <GridBackground />
       <View style={styles.topBar}>
         {searchVisible ? (
-          <SearchBarFade>
           <View style={styles.searchBar}>
             <Feather name="search" size={15} color={colors.gris} />
             <TextInput
@@ -281,7 +265,6 @@ export default function ProyectosScreen() {
               <Feather name="x" size={16} color={colors.gris} />
             </TouchableOpacity>
           </View>
-          </SearchBarFade>
         ) : (
           <>
             <View style={styles.brand}>
