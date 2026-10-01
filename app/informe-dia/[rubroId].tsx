@@ -145,7 +145,31 @@ export default function InformeDiaScreen() {
         if (!item.uri) continue;
 
         if (item.type === 'foto') {
-          mediaItems.push({ type: 'foto', url: item.uri, note: item.note });
+          try {
+            setCloseStage(`Subiendo foto ${mediaItems.length + 1}…`);
+            const fotoPath = `${studio.id}/daily/fotos/${Date.now()}_${mediaItems.length}.jpg`;
+            const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${fotoPath}`;
+
+            const uploadTask = FileSystem.createUploadTask(
+              uploadUrl, item.uri,
+              {
+                httpMethod: 'POST',
+                uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+                headers: {
+                  Authorization: `Bearer ${session.access_token}`,
+                  'Content-Type': 'image/jpeg',
+                  'x-upsert': 'true',
+                },
+              },
+            );
+            const result = await uploadTask.uploadAsync();
+            if (result && result.status < 300) {
+              const fotoUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${fotoPath}`;
+              mediaItems.push({ type: 'foto', url: fotoUrl, note: item.note });
+            }
+          } catch {
+            // skip this photo rather than blocking the whole report
+          }
         } else {
           // Extract thumbnail from video at 1s (or 0 if shorter)
           try {
