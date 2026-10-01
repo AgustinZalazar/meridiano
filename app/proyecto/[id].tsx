@@ -10,7 +10,10 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRubros, type DbRubro } from '../../lib/data/use-rubros';
+import { useProjectPendientes, type DbPendingItem } from '../../lib/data/use-pendientes';
 import { ProjectPlaceholder } from '../../components/ProjectPlaceholder';
+import * as store from '../../lib/offline/store';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -73,29 +76,6 @@ interface DbProject {
   anio_proyecto: number | null;
 }
 
-interface DbRubro {
-  id: string;
-  code: string;
-  name: string;
-  contractor: string | null;
-  status: DbRubroStatus;
-  start_date: string | null;
-  end_date: string | null;
-  actual_start_date: string | null;
-  actual_end_date: string | null;
-}
-
-interface DbPendingItem {
-  id: string;
-  description: string;
-  rubro_id: string;
-  trade: string | null;
-  status: PendingStatus;
-  source: 'ai' | 'manual';
-  reports: { type: ReportType } | null;
-  created_at: string;
-  profiles: { full_name: string } | null;
-}
 
 interface DbPlano {
   id: string;
@@ -471,10 +451,8 @@ export default function ProyectoScreen() {
   const projectId = Array.isArray(id) ? id[0] : id;
 
   const [project, setProject] = useState<DbProject | null>(null);
-  const [rubros, setRubros] = useState<DbRubro[]>([]);
-  const [pendingItems, setPendingItems] = useState<DbPendingItem[]>([]);
   const [planos, setPlanos] = useState<DbPlano[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [projectLoading, setProjectLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('rubros');
   const [pendType, setPendType] = useState<ReportType>('contratistas');
   const [pendStatusFilter, setPendStatusFilter] = useState<PendingStatus | 'active'>('active');
@@ -490,27 +468,45 @@ export default function ProyectoScreen() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [openingPlanoId, setOpeningPlanoId] = useState<string | null>(null);
 
+  const { rubros, loading: rubrosLoading, refetch: refetchRubros } = useRubros(projectId ?? '');
+  const { items: pendingItems, loading: pendientesLoading, refetch: refetchPendientes } = useProjectPendientes(projectId ?? '');
+  const loading = projectLoading || rubrosLoading || pendientesLoading;
+
   useFocusEffect(
     useCallback(() => {
       if (!projectId) return;
-      setLoading(true);
+      setProjectLoading(true);
+      refetchRubros();
+      refetchPendientes();
 
-      Promise.all([
-        supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date, status, property_type, tipo_obra, m2_cubiertos, m2_totales, m2_terreno, pisos, unidades, dormitorios, banos, ambientes, cocheras, amenities, direccion, comitente, anio_proyecto').eq('id', projectId).single(),
-        supabase.from('rubros').select('id, code, name, contractor, status, start_date, end_date, actual_start_date, actual_end_date').eq('project_id', projectId).order('created_at'),
-        supabase.from('pending_items').select('id, description, rubro_id, trade, status, source, reports(type), created_at, profiles!created_by(full_name)').eq('project_id', projectId).order('created_at', { ascending: false }),
-        supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
-      ]).then(([projRes, rubrosRes, pendRes, planosRes]) => {
-        if (projRes.data) {
-          setProject(projRes.data as DbProject);
-          setProjectStatus((projRes.data as DbProject).status ?? null);
+      (async () => {
+        const cacheKey = `project:${projectId}`;
+
+        try {
+          const cached = await store.getCache<DbProject>(cacheKey);
+          if (cached) {
+            setProject(cached);
+            setProjectStatus(cached.status ?? null);
+          }
+
+          const [projRes, planosRes] = await Promise.all([
+            supabase.from('projects').select('id, name, image_url, logo_url, start_date, end_date, status, property_type, tipo_obra, m2_cubiertos, m2_totales, m2_terreno, pisos, unidades, dormitorios, banos, ambientes, cocheras, amenities, direccion, comitente, anio_proyecto').eq('id', projectId).single(),
+            supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false }),
+          ]);
+          if (projRes.data) {
+            const fresh = projRes.data as DbProject;
+            setProject(fresh);
+            setProjectStatus(fresh.status ?? null);
+            await store.setCache(cacheKey, fresh);
+          }
+          setPlanos((planosRes.data as DbPlano[]) ?? []);
+        } catch {
+          // network error — cached data (if any) already applied above
+        } finally {
+          setProjectLoading(false);
         }
-        setRubros((rubrosRes.data as DbRubro[]) ?? []);
-        setPendingItems((pendRes.data as DbPendingItem[]) ?? []);
-        setPlanos((planosRes.data as DbPlano[]) ?? []);
-        setLoading(false);
-      });
-    }, [projectId])
+      })();
+    }, [projectId, refetchRubros, refetchPendientes])
   );
 
   async function handlePickPlano() {
@@ -619,8 +615,8 @@ export default function ProyectoScreen() {
   const openPendingCount = pendingItems.filter((p) => p.status === 'pendiente').length;
 
   async function handleCompletePending(id: string) {
-    setPendingItems((prev) => prev.filter((p) => p.id !== id));
     await supabase.from('pending_items').update({ status: 'resuelto' }).eq('id', id);
+    refetchPendientes();
   }
 
   if (loading) {

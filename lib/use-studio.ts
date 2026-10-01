@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './supabase';
 import { useAuth } from './auth-context';
+import * as store from './offline/store';
 
 export type StudioRole = 'owner' | 'admin' | 'member' | 'viewer';
 
@@ -26,34 +27,46 @@ export function useStudio() {
       return;
     }
 
-    setLoading(true);
+    const cacheKey = `studio:${session.user.id}`;
 
-    const { data: memberData } = await supabase
-      .from('studio_members')
-      .select('role, studio_id')
-      .eq('user_id', session.user.id)
-      .maybeSingle();
-
-    if (!memberData?.studio_id) {
-      setStudio(null);
-      setRole(null);
+    const cached = await store.getCache<{ studio: Studio; role: StudioRole }>(cacheKey);
+    if (cached) {
+      setStudio(cached.studio);
+      setRole(cached.role);
       setLoading(false);
-      return;
     }
 
-    const { data: studioData } = await supabase
-      .from('studios')
-      .select('id, name, plan, videos_used_this_period, logo_url')
-      .eq('id', memberData.studio_id)
-      .maybeSingle();
+    try {
+      const { data: memberData } = await supabase
+        .from('studio_members')
+        .select('role, studio_id')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
 
-    if (studioData) {
-      const { videos_used_this_period, ...rest } = studioData as any;
-      setStudio({ ...rest, videos_used: videos_used_this_period ?? 0 } as Studio);
-    } else {
-      setStudio(null);
+      if (!memberData?.studio_id) {
+        if (!cached) { setStudio(null); setRole(null); }
+        setLoading(false);
+        return;
+      }
+
+      const { data: studioData } = await supabase
+        .from('studios')
+        .select('id, name, plan, videos_used_this_period, logo_url')
+        .eq('id', memberData.studio_id)
+        .maybeSingle();
+
+      if (studioData) {
+        const { videos_used_this_period, ...rest } = studioData as any;
+        const fresh = { ...rest, videos_used: videos_used_this_period ?? 0 } as Studio;
+        const freshRole = memberData.role as StudioRole;
+        setStudio(fresh);
+        setRole(freshRole);
+        await store.setCache(cacheKey, { studio: fresh, role: freshRole });
+      }
+    } catch {
+      // offline — cached data already applied
     }
-    setRole(memberData.role as StudioRole);
+
     setLoading(false);
   }, [session?.user?.id]);
 

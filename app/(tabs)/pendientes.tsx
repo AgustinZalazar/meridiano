@@ -7,24 +7,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
+import { usePendientesTab, type DbPendingGlobal } from '../../lib/data/use-pendientes';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ReportType = 'contratistas' | 'oficina';
 type PendingStatus = 'pendiente' | 'en_revision' | 'resuelto';
 
-interface DbPending {
-  id: string;
-  description: string;
-  trade: string | null;
-  status: PendingStatus;
-  source: 'ai' | 'manual';
-  created_at: string;
-  projects: { name: string } | null;
-  rubros: { name: string } | null;
-  reports: { type: ReportType } | null;
-  profiles: { full_name: string } | null;
-}
+type DbPending = DbPendingGlobal;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -194,8 +184,7 @@ export default function PendientesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [activeType, setActiveType] = useState<ReportType>('contratistas');
-  const [items, setItems] = useState<DbPending[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { items, loading, fromCache, refetch } = usePendientesTab();
   const [filterVisible, setFilterVisible] = useState(false);
   const [statusFilter, setStatusFilter] = useState<PendingStatus | 'all' | 'active'>('active');
   const [projectFilter, setProjectFilter] = useState<string | 'all'>('all');
@@ -207,17 +196,7 @@ export default function PendientesScreen() {
     setProjectFilter('all');
   }
 
-  const fetchPendientes = useCallback(async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from('pending_items')
-      .select('id, description, trade, status, source, created_at, projects(name), rubros(name), reports(type), profiles!created_by(full_name)')
-      .order('created_at', { ascending: false });
-    setItems((data as DbPending[]) ?? []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { fetchPendientes(); }, [fetchPendientes]);
+  useEffect(() => { refetch(); }, [refetch]);
 
   const projectNames = [...new Set(items.map(p => p.projects?.name).filter(Boolean) as string[])].sort();
 
@@ -257,6 +236,13 @@ export default function PendientesScreen() {
         onChange={(v) => setActiveType(v === 'Contratistas' ? 'contratistas' : 'oficina')}
         style={styles.typeToggle}
       />
+
+      {fromCache && (
+        <View style={styles.offlineBanner}>
+          <Feather name="wifi-off" size={12} color={colors.gris} />
+          <Text style={styles.offlineBannerText}>Mostrando datos guardados</Text>
+        </View>
+      )}
 
       {/* List */}
       <ScrollView
@@ -406,6 +392,15 @@ const styles = StyleSheet.create({
   },
   completeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 10, color: colors.success },
 
+  offlineBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginHorizontal: spacing.xl, marginBottom: spacing.sm,
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 10, backgroundColor: colors.chip,
+  },
+  offlineBannerText: {
+    fontFamily: fonts.mono.regular, fontSize: 11, color: colors.gris, letterSpacing: 0.2,
+  },
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
 

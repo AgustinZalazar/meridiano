@@ -32,6 +32,7 @@ import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useProfile } from '../../lib/use-profile';
 import { useStudio } from '../../lib/use-studio';
+import { useProjects, type DbProjectCard } from '../../lib/data/use-projects';
 
 type PropertyType = 'edificio' | 'casa' | 'local_comercial' | 'oficina' | 'nave_industrial' | 'otro';
 
@@ -53,8 +54,8 @@ const PROPERTY_PALETTE: Record<PropertyType, { grad: [string, string]; tint: str
   otro:            { grad: ['#EFEBE2', '#E4DDD0'], tint: '#6B6A65', ring: 'rgba(107,106,101,0.10)' },
 };
 
-function ProjectLogoFallback({ propertyType }: { propertyType: PropertyType | null }) {
-  const type = propertyType ?? 'otro';
+function ProjectLogoFallback({ propertyType }: { propertyType: string | null }) {
+  const type = (propertyType && propertyType in PROPERTY_PALETTE ? propertyType : 'otro') as PropertyType;
   const { grad, tint, ring } = PROPERTY_PALETTE[type];
   const icon = PROPERTY_ICON[type] as any;
 
@@ -81,13 +82,7 @@ function ProjectLogoFallback({ propertyType }: { propertyType: PropertyType | nu
   );
 }
 
-interface DbProject {
-  id: string;
-  name: string;
-  logo_url: string | null;
-  property_type: PropertyType | null;
-  rubros: { id: string; status: string }[];
-}
+type DbProject = DbProjectCard;
 
 const FILTERS = ['Todos', 'En curso'];
 
@@ -185,9 +180,8 @@ export default function ProyectosScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { profile } = useProfile();
-  const { studio, isAdmin, refetch: refetchStudio } = useStudio();
-  const [projects, setProjects] = useState<DbProject[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { studio, isAdmin, loading: studioLoading, refetch: refetchStudio } = useStudio();
+  const { projects, loading, fromCache, refetch: refetchProjects } = useProjects();
   const [filter, setFilter] = useState('Todos');
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,19 +211,7 @@ export default function ProyectosScreen() {
   }
 
   useFocusEffect(useCallback(() => { refetchStudio(); }, [refetchStudio]));
-
-  const fetchProjects = useCallback(() => {
-    setLoading(true);
-    supabase
-      .from('projects')
-      .select('id, name, logo_url, property_type, rubros(id, status)')
-      .then(({ data }) => {
-        setProjects((data as DbProject[]) ?? []);
-        setLoading(false);
-      });
-  }, []);
-
-  useFocusEffect(fetchProjects);
+  useFocusEffect(useCallback(() => { refetchProjects(); }, [refetchProjects]));
 
   const filtered = projects
     .filter((p) => {
@@ -277,7 +259,7 @@ export default function ProyectosScreen() {
               <TouchableOpacity style={styles.circleBtn} onPress={openSearch} activeOpacity={0.8}>
                 <Feather name="search" size={17} color={colors.crema} />
               </TouchableOpacity>
-              {isAdmin && (
+              {(isAdmin || studioLoading) && (
                 <TouchableOpacity
                   style={[styles.circleBtn, styles.circleBtnAccent]}
                   onPress={() => router.push('/proyecto/nueva')}
@@ -298,6 +280,13 @@ export default function ProyectosScreen() {
       <View style={styles.filterRow}>
         <SlidingTabs options={FILTERS} selected={filter} onChange={setFilter} />
       </View>
+
+      {fromCache && (
+        <View style={styles.offlineBanner}>
+          <Feather name="wifi-off" size={12} color={colors.gris} />
+          <Text style={styles.offlineBannerText}>Mostrando datos guardados</Text>
+        </View>
+      )}
 
       {!loading && projects.length > 0 && (
         <TouchableOpacity style={styles.simEntry} onPress={() => router.push('/simulacion')} activeOpacity={0.8}>
@@ -322,7 +311,7 @@ export default function ProyectosScreen() {
                 ? `Sin resultados para "${searchQuery.trim()}"`
                 : filter === 'Todos' ? 'No tenés proyectos aún' : `No hay proyectos "${filter}"`}
             </Text>
-            {filter === 'Todos' && !searchQuery.trim() && isAdmin && (
+            {filter === 'Todos' && !searchQuery.trim() && (isAdmin || studioLoading) && (
               <TouchableOpacity
                 style={styles.emptyBtn}
                 onPress={() => router.push('/proyecto/nueva')}
@@ -566,6 +555,23 @@ const styles = StyleSheet.create({
     fontFamily: fonts.archivo.semibold,
     fontSize: 14,
     color: colors.crema,
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: colors.chip,
+  },
+  offlineBannerText: {
+    fontFamily: fonts.mono.regular,
+    fontSize: 11,
+    color: colors.gris,
+    letterSpacing: 0.2,
   },
   simEntry: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,

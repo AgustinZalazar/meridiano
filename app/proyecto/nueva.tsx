@@ -13,6 +13,8 @@ import { useAuth } from '../../lib/auth-context';
 import { useStudio } from '../../lib/use-studio';
 import { DateField } from '../../components/DateField';
 import { uploadProjectImage } from '../../lib/upload-image';
+import * as store from '../../lib/offline/store';
+import { useNetworkState } from '../../lib/offline/network';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,6 +143,7 @@ export default function NuevoProyectoScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
+  const isOnline = useNetworkState();
   const canSave    = name.trim().length > 0;
   const isEdificio = propertyType === 'edificio';
   const isCasa     = propertyType === 'casa';
@@ -160,23 +163,17 @@ export default function NuevoProyectoScreen() {
   }
 
   async function handleCreate() {
-    if (!canSave || !session || !studio) return;
+    if (!canSave || !session) return;
     setLoading(true);
     setError(null);
 
-    let imageUrl: string | null = null;
-    if (imageUri && pickedBase64) {
-      imageUrl = await uploadProjectImage(session.user.id, imageUri, pickedBase64);
-    }
-
-    const { error: dbError } = await supabase.from('projects').insert({
+    const payload = {
       name:           name.trim(),
       created_by:     session.user.id,
       studio_id:      studio?.id ?? null,
-      image_url:      imageUrl,
+      image_url:      null as string | null,
       start_date:     startDate ? startDate.toISOString().slice(0, 10) : null,
       end_date:       endDate   ? endDate.toISOString().slice(0, 10)   : null,
-      // Property profile
       property_type:  propertyType,
       tipo_obra:      tipoObra,
       m2_cubiertos:   strNum(m2Cubiertos),
@@ -192,7 +189,26 @@ export default function NuevoProyectoScreen() {
       direccion:      direccion.trim() || null,
       comitente:      comitente.trim() || null,
       anio_proyecto:  strNum(anioProyecto),
-    });
+    };
+
+    if (!isOnline) {
+      const localId = `local_${Date.now()}`;
+      await store.enqueue({ type: 'create_project', payload, localId });
+      await store.optimisticAdd('projects', {
+        id: localId, name: payload.name,
+        logo_url: null, property_type: payload.property_type,
+        rubros: [],
+      });
+      setLoading(false);
+      router.back();
+      return;
+    }
+
+    if (imageUri && pickedBase64) {
+      payload.image_url = await uploadProjectImage(session.user.id, imageUri, pickedBase64);
+    }
+
+    const { error: dbError } = await supabase.from('projects').insert(payload);
 
     setLoading(false);
     if (dbError) { setError('No se pudo crear el proyecto. Intentá de nuevo.'); return; }
