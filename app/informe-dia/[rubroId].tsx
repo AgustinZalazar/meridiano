@@ -145,31 +145,7 @@ export default function InformeDiaScreen() {
         if (!item.uri) continue;
 
         if (item.type === 'foto') {
-          try {
-            setCloseStage(`Subiendo foto ${mediaItems.length + 1}…`);
-            const fotoPath = `${studio.id}/daily/fotos/${Date.now()}_${mediaItems.length}.jpg`;
-            const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${fotoPath}`;
-
-            const uploadTask = FileSystem.createUploadTask(
-              uploadUrl, item.uri,
-              {
-                httpMethod: 'POST',
-                uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-                headers: {
-                  Authorization: `Bearer ${session.access_token}`,
-                  'Content-Type': 'image/jpeg',
-                  'x-upsert': 'true',
-                },
-              },
-            );
-            const result = await uploadTask.uploadAsync();
-            if (result && result.status < 300) {
-              const fotoUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${fotoPath}`;
-              mediaItems.push({ type: 'foto', url: fotoUrl, note: item.note });
-            }
-          } catch {
-            // skip this photo rather than blocking the whole report
-          }
+          mediaItems.push({ type: 'foto', url: item.uri, note: item.note });
         } else {
           // Extract thumbnail from video at 1s (or 0 if shorter)
           try {
@@ -221,7 +197,18 @@ export default function InformeDiaScreen() {
         },
       });
 
-      if (error) throw new Error(error.message ?? 'Error al generar el informe');
+      if (error) {
+        // Try to extract the actual error message from the edge function response
+        let msg = error.message ?? 'Error al generar el informe';
+        try {
+          const ctx = (error as any).context;
+          if (ctx) {
+            const body = typeof ctx === 'string' ? JSON.parse(ctx) : await ctx.json?.();
+            if (body?.error) msg = body.error;
+          }
+        } catch {}
+        throw new Error(msg);
+      }
 
       setCloseStage(null);
       setClosing(false);
