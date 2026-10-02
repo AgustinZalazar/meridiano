@@ -7,8 +7,6 @@ import {
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import * as VideoThumbnails from 'expo-video-thumbnails';
-import * as FileSystem from 'expo-file-system/legacy';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
@@ -147,42 +145,8 @@ export default function InformeDiaScreen() {
         if (item.type === 'foto') {
           mediaItems.push({ type: 'foto', url: item.uri, note: item.note });
         } else {
-          // Extract thumbnail from video at 1s (or 0 if shorter)
-          try {
-            setCloseStage(`Extrayendo captura de video ${mediaItems.length + 1}…`);
-            const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(item.uri, { time: 1000 });
-
-            // Upload thumbnail to storage
-            const thumbPath = `${studio.id}/daily/thumbs/${Date.now()}.jpg`;
-            const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${thumbPath}`;
-
-            const cacheDir  = `${FileSystem.cacheDirectory ?? ''}daily_thumbs/`;
-            await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
-            const localPath = `${cacheDir}${Date.now()}.jpg`;
-            await FileSystem.copyAsync({ from: thumbUri, to: localPath });
-
-            const uploadTask = FileSystem.createUploadTask(
-              uploadUrl, localPath,
-              {
-                httpMethod: 'POST',
-                uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-                headers: {
-                  Authorization: `Bearer ${session.access_token}`,
-                  'Content-Type': 'image/jpeg',
-                  'x-upsert': 'true',
-                },
-              },
-            );
-            const result = await uploadTask.uploadAsync();
-            FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
-
-            if (result && result.status < 300) {
-              const thumbUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${thumbPath}`;
-              mediaItems.push({ type: 'video', url: thumbUrl, note: item.note });
-            }
-          } catch {
-            // If thumbnail extraction fails, skip this video rather than blocking the whole report
-          }
+          // uri already holds the thumbnail URL (uploaded at add-time in agregar.tsx)
+          mediaItems.push({ type: 'video', url: item.uri, note: item.note });
         }
       }
 

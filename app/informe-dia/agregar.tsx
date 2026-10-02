@@ -9,6 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useStudio } from '../../lib/use-studio';
@@ -95,18 +96,50 @@ export default function AgregarMediaScreen() {
       const rawExt = uri.split('.').pop()?.toLowerCase() ?? '';
       const ext    = ALLOWED_VID_EXTS.includes(rawExt) ? rawExt : 'mp4';
 
-      // Copy to cache (handles content:// URIs on Android)
+      // Extract thumbnail from local video before uploading
+      setUploadLabel('Extrayendo captura…');
+      const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(uri, { time: 1000 });
+
+      // Upload thumbnail to storage
+      const thumbPath   = `${studio.id}/daily/${reportId}/thumb_${Date.now()}.jpg`;
+      const thumbUploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${thumbPath}`;
+
+      const thumbCacheDir = `${FileSystem.cacheDirectory ?? ''}daily_thumbs/`;
+      await FileSystem.makeDirectoryAsync(thumbCacheDir, { intermediates: true });
+      const thumbLocalPath = `${thumbCacheDir}${Date.now()}.jpg`;
+      await FileSystem.copyAsync({ from: thumbUri, to: thumbLocalPath });
+
+      setUploadLabel('Subiendo captura…');
+      const thumbTask = FileSystem.createUploadTask(
+        thumbUploadUrl, thumbLocalPath,
+        {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'true',
+          },
+        },
+      );
+      const thumbResult = await thumbTask.uploadAsync();
+      FileSystem.deleteAsync(thumbLocalPath, { idempotent: true }).catch(() => {});
+
+      if (!thumbResult || thumbResult.status >= 300)
+        throw new Error('No se pudo subir la captura del video.');
+
+      const thumbUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${thumbPath}`;
+
+      // Copy video to cache (handles content:// URIs on Android)
       const cacheDir  = `${FileSystem.cacheDirectory ?? ''}daily_uploads/`;
       await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
       const localPath = `${cacheDir}${Date.now()}.${ext}`;
       await FileSystem.copyAsync({ from: uri, to: localPath });
 
-      // Path must start with studio.id to match storage RLS policy
       const storagePath = `${studio.id}/daily/${reportId}/${Date.now()}.${ext}`;
       const uploadUrl   = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${storagePath}`;
 
       setUploadLabel('Subiendo video…');
-
       const uploadTask = FileSystem.createUploadTask(
         uploadUrl, localPath,
         {
@@ -119,21 +152,19 @@ export default function AgregarMediaScreen() {
           },
         },
       );
-
       const result = await uploadTask.uploadAsync();
       FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
 
       if (!result || result.status >= 300)
         throw new Error('No se pudo subir el video. Verificá tu conexión.');
 
-      const storageUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${storagePath}`;
-
       setUploadLabel('Guardando…');
 
+      // Store thumbnail URL as uri — this is what the generate flow sends to AI
       const { error } = await supabase.from('report_media').insert({
         report_id: reportId,
         type:      'video',
-        uri:       storageUrl,
+        uri:       thumbUrl,
         note:      note.trim() || null,
       });
 
