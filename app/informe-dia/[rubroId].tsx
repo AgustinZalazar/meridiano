@@ -58,13 +58,14 @@ export default function InformeDiaScreen() {
 
   const { studio } = useStudio();
 
-  const [loading, setLoading]         = useState(true);
-  const [openReport, setOpenReport]   = useState<DailyReport | null>(null);
-  const [media, setMedia]             = useState<ReportMedia[]>([]);
-  const [reportType, setReportType]   = useState<ReportType>('contratistas');
-  const [starting, setStarting]       = useState(false);
-  const [closing, setClosing]         = useState(false);
-  const [closeStage, setCloseStage]   = useState<string | null>(null);
+  const [loading, setLoading]               = useState(true);
+  const [openReport, setOpenReport]         = useState<DailyReport | null>(null);
+  const [generatedToday, setGeneratedToday] = useState<{ id: string; type: ReportType } | null>(null);
+  const [media, setMedia]                   = useState<ReportMedia[]>([]);
+  const [reportType, setReportType]         = useState<ReportType>('contratistas');
+  const [starting, setStarting]             = useState(false);
+  const [closing, setClosing]               = useState(false);
+  const [closeStage, setCloseStage]         = useState<string | null>(null);
 
   const load = useCallback(() => {
     if (!rubroId) return;
@@ -92,7 +93,21 @@ export default function InformeDiaScreen() {
             });
         } else {
           setMedia([]);
-          setLoading(false);
+          // Look for a report generated today from this rubro
+          supabase
+            .from('reports')
+            .select('id, type')
+            .eq('rubro_id', rubroId)
+            .eq('date', todayIso())
+            .eq('status', 'completed')
+            .eq('mode', 'foto')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+            .then(({ data: gen }) => {
+              setGeneratedToday(gen ? { id: gen.id, type: gen.type as ReportType } : null);
+              setLoading(false);
+            });
         }
       });
   }, [rubroId]);
@@ -233,6 +248,17 @@ export default function InformeDiaScreen() {
           <Text style={s.emptyBody}>
             Iniciá el informe del día para ir agregando fotos y videos durante la jornada.
           </Text>
+
+          {generatedToday && (
+            <TouchableOpacity
+              style={s.generatedBtn}
+              onPress={() => router.push(`/informe/${generatedToday.id}?type=${generatedToday.type}`)}
+              activeOpacity={0.8}
+            >
+              <Feather name="file-text" size={14} color={colors.crema} />
+              <Text style={s.generatedBtnText}>Ver informe generado hoy</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Tipo */}
           <Text style={s.typeLabel}>TIPO DE INFORME</Text>
@@ -442,4 +468,9 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 8,
   },
   startBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFF' },
+  generatedBtn: {
+    height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: colors.crema, width: '100%',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 16,
+  },
+  generatedBtnText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.crema },
 });
