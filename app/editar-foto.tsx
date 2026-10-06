@@ -217,11 +217,17 @@ export default function EditarFotoScreen() {
       if (!fotoUrl) throw new Error('No se pudo subir la foto anotada.');
 
       if (dailyReportId) {
+        // Build note: marker descriptions (like analyze-foto does) + optional general note
+        const markersText = markers.length > 0
+          ? markers.map((m, i) => `${i + 1}. ${m.description}`).join('; ')
+          : null;
+        const combinedNote = [dailyNote?.trim() || null, markersText].filter(Boolean).join(' — ') || null;
+
         const { error } = await supabase.from('report_media').insert({
           report_id: dailyReportId,
           type: 'foto',
           uri: fotoUrl,
-          note: dailyNote || null,
+          note: combinedNote,
         });
         if (error) throw new Error('No se pudo guardar en el informe.');
         router.back();
