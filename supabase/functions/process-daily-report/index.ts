@@ -91,36 +91,69 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Build the GPT-4o vision message — all images in a single call for combined context
-    // Each image is preceded by a text label with its note, matching the analyze-foto pattern
+    // Convert storage URLs to signed URLs so OpenAI can download them
+    // regardless of bucket visibility settings
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const resolvedItems = await Promise.all(
+      media_items.map(async (item) => {
+        try {
+          // Extract bucket and path from URL patterns:
+          // /storage/v1/object/public/{bucket}/{path}
+          // /storage/v1/object/{bucket}/{path}
+          const match = item.url.match(/\/storage\/v1\/object\/(?:public\/)?([^/]+)\/(.+)/);
+          if (!match) return item;
+          const [, bucket, path] = match;
+          const { data, error } = await supabaseAdmin.storage.from(bucket).createSignedUrl(path, 3600);
+          if (error || !data?.signedUrl) return item;
+          return { ...item, url: data.signedUrl };
+        } catch {
+          return item;
+        }
+      })
+    );
+
+    // Build content blocks.
+    // Items WITH a note: send text only (no image) — prevents GPT-4o from overriding the
+    // inspector's own words with its visual interpretation.
+    // Items WITHOUT a note: send image so GPT-4o can describe what it sees.
     const imageContent: { type: string; text?: string; image_url?: { url: string; detail: string } }[] = [];
 
-    media_items.forEach((item, index) => {
-      const label = item.type === 'foto'
-        ? `[FOTO ${index + 1}${item.note ? ` — "${item.note}"` : ''}]`
-        : `[CAPTURA DE VIDEO ${index + 1}${item.note ? ` — "${item.note}"` : ''}]`;
-
-      imageContent.push({ type: 'text', text: label });
-      imageContent.push({ type: 'image_url', image_url: { url: item.url, detail: 'low' } });
+    resolvedItems.forEach((item, index) => {
+      const kind = item.type === 'foto' ? 'Foto' : 'Video';
+      if (item.note) {
+        imageContent.push({
+          type: 'text',
+          text: `--- ELEMENTO ${index + 1} (${kind}) ---\nDESCRIPCIÓN EXACTA DEL INSPECTOR: "${item.note}"\n[sin imagen — usá solo este texto]`,
+        });
+      } else {
+        imageContent.push({
+          type: 'text',
+          text: `--- ELEMENTO ${index + 1} (${kind}) ---\n[sin nota — describí el problema visible en la imagen]:`,
+        });
+        imageContent.push({ type: 'image_url', image_url: { url: item.url, detail: 'high' } });
+      }
     });
 
     const typeLabel = dailyReport.type === 'oficina' ? 'oficina técnica' : 'contratistas';
 
-    const systemPrompt = `Sos un inspector experto en obras de construcción. Analizás el informe del día de un inspector, que contiene fotos y capturas de video del avance y los problemas registrados durante la jornada. Analizás todo el material en conjunto para detectar problemas, defectos y tareas pendientes. Respondés exclusivamente con JSON válido sin texto adicional.`;
+    const systemPrompt = `Sos un sistema de registro de inspecciones de obras. Convertís los elementos documentados por un inspector en pendientes estructurados. Para elementos con "DESCRIPCIÓN EXACTA DEL INSPECTOR": copiá esa frase tal cual como description (solo corregí errores tipográficos obvios), y clasificá el trade según el texto. Para elementos sin nota: describí brevemente el problema visible en la imagen y clasificá el trade. Respondés exclusivamente con JSON válido, sin texto adicional.`;
 
-    const userPrompt = `Analizá este informe del día de obra (${typeLabel}). Contiene ${media_items.length} elemento${media_items.length !== 1 ? 's' : ''}: ${media_items.filter(m => m.type === 'foto').length} foto${media_items.filter(m => m.type === 'foto').length !== 1 ? 's' : ''} y ${media_items.filter(m => m.type === 'video').length} captura${media_items.filter(m => m.type === 'video').length !== 1 ? 's' : ''} de video. Cada imagen está etiquetada con su número y nota del inspector.
+    const userPrompt = `Procesá ${resolvedItems.length} elemento${resolvedItems.length !== 1 ? 's' : ''} del informe del día (${typeLabel}).
 
-Identificá todos los problemas, defectos o tareas pendientes visibles en el material. Consolidá problemas similares que aparezcan en múltiples imágenes en un solo ítem.
+Reglas estrictas:
+1. Elemento con DESCRIPCIÓN EXACTA DEL INSPECTOR → description = esa frase (copiada, mínimos cambios). Trade = clasificá por el texto.
+2. Elemento sin nota → description = descripción breve del problema visual. Trade = clasificá por la imagen.
+3. Un elemento = exactamente un ítem, en el mismo orden. No combines ni separes.
 
-Respondé SOLO con este JSON:
+JSON de respuesta:
 {
   "items": [
-    { "description": "descripción clara y específica del problema", "trade": "especialidad o null" }
+    { "description": "...", "trade": "especialidad o null" }
   ],
-  "summary": "resumen breve de 1-2 oraciones del informe del día"
+  "summary": "resumen de 1-2 oraciones de la jornada"
 }
 
-Especialidades válidas: albanilería, electricidad, plomería, carpintería, pintura, herrería, vidriería, HVAC, impermeabilización, estructura, general.`;
+Trades válidos: albanilería, electricidad, plomería, carpintería, pintura, herrería, vidriería, HVAC, impermeabilización, estructura, general.`;
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -176,6 +209,18 @@ Especialidades válidas: albanilería, electricidad, plomería, carpintería, pi
       .single();
 
     if (reportErr || !report) throw new Error(`Error al crear el informe: ${reportErr?.message}`);
+
+    // Copy report_media from daily report to the generated formal report
+    const { data: dailyMedia } = await supabaseAdmin
+      .from('report_media')
+      .select('type, uri, note')
+      .eq('report_id', daily_report_id);
+
+    if (dailyMedia && dailyMedia.length > 0) {
+      await supabaseAdmin.from('report_media').insert(
+        dailyMedia.map((m) => ({ report_id: report.id, type: m.type, uri: m.uri, note: m.note }))
+      );
+    }
 
     // Insert all pending items
     if (items.length > 0) {
