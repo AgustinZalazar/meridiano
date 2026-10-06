@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { SlidingTabs } from '../../components/SlidingTabs';
 import {
   View, Text, TouchableOpacity, FlatList, StyleSheet,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, ScrollView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -224,22 +224,84 @@ export default function InformeDiaScreen() {
     );
   }
 
-  // ── No open report: Iniciar ──────────────────────────────────────────────
+  // ── No open report ───────────────────────────────────────────────────────
 
   if (!openReport) {
+    const topBar = (
+      <View style={s.topBar}>
+        <TouchableOpacity style={s.circleBtn} onPress={() => router.back()} activeOpacity={0.8}>
+          <Feather name="arrow-left" size={16} color={colors.crema} />
+        </TouchableOpacity>
+        <View style={s.topMeta}>
+          <Text style={s.topEyebrow}>INFORME DEL DÍA</Text>
+          <Text style={s.topTitle} numberOfLines={1}>{rubroName ?? 'Rubro'}</Text>
+        </View>
+        <View style={{ width: 42 }} />
+      </View>
+    );
+
+    // Generated today → show card + secondary option to start new
+    if (generatedToday) {
+      return (
+        <View style={[s.safe, { paddingTop: insets.top }]}>
+          {topBar}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[s.noReportScroll, { paddingBottom: insets.bottom + 40 }]}
+          >
+            <Text style={s.sectionLabel}>HOY</Text>
+            <TouchableOpacity
+              style={s.generatedCard}
+              onPress={() => router.push(`/informe/${generatedToday.id}?type=${generatedToday.type}`)}
+              activeOpacity={0.8}
+            >
+              <View style={s.generatedCardIcon}>
+                <Feather name="file-text" size={22} color={colors.crema} />
+              </View>
+              <View style={s.generatedCardBody}>
+                <Text style={s.generatedCardTitle}>Informe generado</Text>
+                <Text style={s.generatedCardSub}>
+                  {generatedToday.type === 'contratistas' ? 'Contratistas' : 'Oficina técnica'} · Ver resumen
+                </Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.gris} />
+            </TouchableOpacity>
+
+            <View style={s.divider} />
+            <Text style={s.sectionLabel}>NUEVA JORNADA</Text>
+            <Text style={s.noReportBody}>
+              Podés iniciar un nuevo informe del día si necesitás registrar más material.
+            </Text>
+            <Text style={[s.typeLabel, { marginTop: 16 }]}>TIPO DE INFORME</Text>
+            <SlidingTabs
+              options={['Contratistas', 'Oficina técnica']}
+              selected={reportType === 'contratistas' ? 'Contratistas' : 'Oficina técnica'}
+              onChange={(v) => setReportType(v === 'Contratistas' ? 'contratistas' : 'oficina')}
+              style={s.typeToggle}
+            />
+            <TouchableOpacity
+              style={[s.startBtn, starting && { opacity: 0.5 }]}
+              onPress={handleStart}
+              disabled={starting}
+              activeOpacity={0.85}
+            >
+              {starting
+                ? <ActivityIndicator color="#FFF" size="small" />
+                : <>
+                    <Feather name="play" size={16} color="#FFF" />
+                    <Text style={s.startBtnText}>Iniciar nuevo informe</Text>
+                  </>
+              }
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      );
+    }
+
+    // No report at all today → empty state
     return (
       <View style={[s.safe, { paddingTop: insets.top }]}>
-        <View style={s.topBar}>
-          <TouchableOpacity style={s.circleBtn} onPress={() => router.back()} activeOpacity={0.8}>
-            <Feather name="arrow-left" size={16} color={colors.crema} />
-          </TouchableOpacity>
-          <View style={s.topMeta}>
-            <Text style={s.topEyebrow}>INFORME DEL DÍA</Text>
-            <Text style={s.topTitle} numberOfLines={1}>{rubroName ?? 'Rubro'}</Text>
-          </View>
-          <View style={{ width: 42 }} />
-        </View>
-
+        {topBar}
         <View style={s.emptyWrap}>
           <View style={s.emptyIcon}>
             <Feather name="calendar" size={28} color={colors.gris} />
@@ -248,27 +310,13 @@ export default function InformeDiaScreen() {
           <Text style={s.emptyBody}>
             Iniciá el informe del día para ir agregando fotos y videos durante la jornada.
           </Text>
-
-          {generatedToday && (
-            <TouchableOpacity
-              style={s.generatedBtn}
-              onPress={() => router.push(`/informe/${generatedToday.id}?type=${generatedToday.type}`)}
-              activeOpacity={0.8}
-            >
-              <Feather name="file-text" size={14} color={colors.crema} />
-              <Text style={s.generatedBtnText}>Ver informe generado hoy</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Tipo */}
-          <Text style={s.typeLabel}>TIPO DE INFORME</Text>
+          <Text style={[s.typeLabel, { marginTop: 8 }]}>TIPO DE INFORME</Text>
           <SlidingTabs
             options={['Contratistas', 'Oficina técnica']}
             selected={reportType === 'contratistas' ? 'Contratistas' : 'Oficina técnica'}
             onChange={(v) => setReportType(v === 'Contratistas' ? 'contratistas' : 'oficina')}
             style={s.typeToggle}
           />
-
           <TouchableOpacity
             style={[s.startBtn, starting && { opacity: 0.5 }]}
             onPress={handleStart}
@@ -459,7 +507,7 @@ const s = StyleSheet.create({
 
   typeLabel: {
     fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.2,
-    textTransform: 'uppercase', color: colors.gris, fontWeight: '700', marginTop: 8,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700',
   },
   typeToggle: {},
 
@@ -468,9 +516,26 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 8,
   },
   startBtnText: { fontFamily: fonts.archivo.bold, fontSize: 15, color: '#FFF' },
-  generatedBtn: {
-    height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: colors.crema, width: '100%',
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 16,
+
+  // ── Generated today card ──
+  noReportScroll: { paddingHorizontal: spacing.xl, gap: 12 },
+  sectionLabel: {
+    fontFamily: fonts.mono.regular, fontSize: 10, letterSpacing: 1.4,
+    textTransform: 'uppercase', color: colors.gris, fontWeight: '700', marginTop: 8,
   },
-  generatedBtnText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.crema },
+  generatedCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: colors.panel, borderRadius: 18, padding: 16,
+  },
+  generatedCardIcon: {
+    width: 52, height: 52, borderRadius: 14, backgroundColor: 'rgba(255,237,213,0.08)',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  generatedCardBody: { flex: 1 },
+  generatedCardTitle: { fontFamily: fonts.archivo.bold, fontSize: 15, color: colors.crema },
+  generatedCardSub: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.gris, marginTop: 3 },
+  divider: { height: 1, backgroundColor: colors.panel, marginVertical: 8 },
+  noReportBody: {
+    fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.gris, lineHeight: 19,
+  },
 });

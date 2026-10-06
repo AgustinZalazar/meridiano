@@ -50,6 +50,13 @@ interface ReportFrame {
   signedUrl?: string;
 }
 
+interface ReportMediaItem {
+  id: string;
+  type: 'foto' | 'video';
+  uri: string | null;
+  note: string | null;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string) {
@@ -231,6 +238,8 @@ export default function InformeScreen() {
   const [matchingFrames, setMatchingFrames] = useState(false);
   const [framePickerItemId, setFramePickerItemId] = useState<string | null>(null);
   const [resolvedExpanded, setResolvedExpanded] = useState(false);
+  const [reportMedia, setReportMedia] = useState<ReportMediaItem[]>([]);
+  const [reportMediaUrls, setReportMediaUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!id || id === 'demo') { setLoading(false); return; }
@@ -239,10 +248,11 @@ export default function InformeScreen() {
 
   async function fetchReport() {
     setLoading(true);
-    const [reportRes, itemsRes, framesRes] = await Promise.all([
+    const [reportRes, itemsRes, framesRes, mediaRes] = await Promise.all([
       supabase.from('reports').select('id, type, mode, note, transcription, ai_summary, foto_url, status, created_at, projects(name, image_url, logo_url), rubros(name, code)').eq('id', id).single<Report>(),
       supabase.from('pending_items').select('id, description, trade, status, source, image_path, frame_id').eq('report_id', id).order('created_at'),
       supabase.from('report_frames').select('id, storage_path, timestamp_sec, visual_description, order_index').eq('report_id', id).order('order_index'),
+      supabase.from('report_media').select('id, type, uri, note').eq('report_id', id).order('created_at'),
     ]);
 
     const reportData = reportRes.data;
@@ -286,6 +296,25 @@ export default function InformeScreen() {
         })
     );
     setItemImages(imageMap);
+
+    // Build signed URLs for report_media (daily report photos & video thumbnails)
+    const fetchedMedia = (mediaRes.data ?? []) as ReportMediaItem[];
+    setReportMedia(fetchedMedia);
+    const mediaUrlMap: Record<string, string> = {};
+    await Promise.all(
+      fetchedMedia
+        .filter((m) => m.uri)
+        .map(async (m) => {
+          try {
+            const match = m.uri!.match(/\/storage\/v1\/object\/(?:public\/)?([^/]+)\/(.+)/);
+            if (!match) { mediaUrlMap[m.id] = m.uri!; return; }
+            const [, bucket, path] = match;
+            const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
+            mediaUrlMap[m.id] = data?.signedUrl ?? m.uri!;
+          } catch { mediaUrlMap[m.id] = m.uri!; }
+        })
+    );
+    setReportMediaUrls(mediaUrlMap);
 
     setLoading(false);
   }
@@ -682,6 +711,41 @@ export default function InformeScreen() {
             <TouchableOpacity activeOpacity={0.9} onPress={() => setLightboxUri(report.foto_url!)}>
               <Image source={{ uri: report.foto_url }} style={styles.fotoImage} resizeMode="contain" />
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Daily report media gallery */}
+        {reportMedia.length > 0 && (
+          <View style={styles.mediaGalleryBlock}>
+            <Text style={[styles.fotoLabel, { marginRight: spacing.xl }]}>REGISTRO DEL DÍA</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.mediaGalleryRow}
+            >
+              {reportMedia.map((m) => {
+                const url = reportMediaUrls[m.id];
+                if (!url) return null;
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={styles.mediaGalleryThumb}
+                    onPress={() => setLightboxUri(url)}
+                    activeOpacity={0.85}
+                  >
+                    <Image source={{ uri: url }} style={styles.mediaGalleryImg} resizeMode="cover" />
+                    <View style={styles.mediaGalleryBadge}>
+                      <Feather name={m.type === 'video' ? 'video' : 'image'} size={9} color="#FFF" />
+                    </View>
+                    {m.note ? (
+                      <View style={styles.mediaGalleryNoteWrap}>
+                        <Text style={styles.mediaGalleryNote} numberOfLines={2}>{m.note}</Text>
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         )}
 
@@ -1203,6 +1267,26 @@ const styles = StyleSheet.create({
   fotoImage: {
     width: '100%', aspectRatio: 4 / 3, borderRadius: 16,
     backgroundColor: colors.chip,
+  },
+
+  mediaGalleryBlock: { gap: 10, paddingLeft: spacing.xl },
+  mediaGalleryRow: { paddingRight: spacing.xl, gap: 10 },
+  mediaGalleryThumb: {
+    width: 140, borderRadius: 14, overflow: 'hidden',
+    backgroundColor: colors.chip, flexShrink: 0,
+  },
+  mediaGalleryImg: { width: 140, height: 100 },
+  mediaGalleryBadge: {
+    position: 'absolute', top: 6, left: 6,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center',
+  },
+  mediaGalleryNoteWrap: {
+    paddingHorizontal: 8, paddingVertical: 6,
+    backgroundColor: colors.panel,
+  },
+  mediaGalleryNote: {
+    fontFamily: fonts.archivo.semibold, fontSize: 10, color: colors.gris, lineHeight: 14,
   },
 
   sectorBlock: { paddingHorizontal: spacing.xl, gap: 10 },
