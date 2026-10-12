@@ -11,6 +11,10 @@ import { FadeImage } from '../../components/FadeImage';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
 import { useStudio } from '../../lib/use-studio';
+import {
+  localIso, todayIso, getMondayIso, getSundayIso,
+  getWeekDays, fmtLastReport, fmtDateHeading,
+} from '../../utils/dates';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,64 +44,6 @@ interface GeneratedToday {
   fotoCount: number;
   videoCount: number;
   totalCount: number;
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function localIso(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function todayIso(): string {
-  return localIso(new Date());
-}
-
-function getMondayIso(): string {
-  const d = new Date();
-  const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
-  const m = new Date(d);
-  m.setDate(d.getDate() + diff);
-  return localIso(m);
-}
-
-function getSundayIso(): string {
-  const d = new Date();
-  const diff = d.getDay() === 0 ? 0 : 7 - d.getDay();
-  const s = new Date(d);
-  s.setDate(d.getDate() + diff);
-  return localIso(s);
-}
-
-function getWeekDays() {
-  const today = todayIso();
-  const mondayStr = getMondayIso();
-  const monday = new Date(mondayStr + 'T12:00:00');
-  const letters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    const iso = localIso(d);
-    return { iso, letter: letters[i], num: d.getDate(), isFuture: iso > today, isToday: iso === today };
-  });
-}
-
-const WEEKDAYS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const MONTHS   = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-
-function fmtDateHeading() {
-  const d = new Date();
-  return {
-    line1: `${WEEKDAYS[d.getDay()]} ${d.getDate()}`,
-    line2:  `de ${MONTHS[d.getMonth()]}`,
-  };
-}
-
-function fmtLastReport(iso: string): string {
-  const d = new Date(iso + 'T12:00:00');
-  return `${WEEKDAYS[d.getDay()].toLowerCase()} ${d.getDate()}`;
 }
 
 function fmtTime(iso: string): string {

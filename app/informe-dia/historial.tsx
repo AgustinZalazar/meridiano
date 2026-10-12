@@ -9,6 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { FadeImage } from '../../components/FadeImage';
 import { supabase } from '../../lib/supabase';
+import { getDateBlock, getMonthLabel } from '../../utils/dates';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,21 +24,6 @@ interface HistorialReport {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const WEEKDAYS_ABR = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
-const MONTHS_LONG  = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-
-function localDate(iso: string): Date { return new Date(iso + 'T12:00:00'); }
-
-function getDateBlock(iso: string) {
-  const d = localDate(iso);
-  return { abbrev: WEEKDAYS_ABR[d.getDay()], num: d.getDate() };
-}
-
-function getMonthLabel(iso: string): string {
-  const d = localDate(iso);
-  return `${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()}`;
-}
 
 function getMonthKey(iso: string): string { return iso.slice(0, 7); }
 

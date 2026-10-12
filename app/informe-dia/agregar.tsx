@@ -13,6 +13,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useStudio } from '../../lib/use-studio';
+import { getVideoMime } from '../../utils/video';
 
 type MediaMode = 'foto' | 'video';
 
@@ -94,8 +95,9 @@ export default function AgregarMediaScreen() {
       if (!session) throw new Error('Sin sesión activa');
 
       const ALLOWED_VID_EXTS = ['mp4', 'mov', 'avi', 'mkv', '3gp', 'webm'];
-      const rawExt = uri.split('.').pop()?.toLowerCase() ?? '';
-      const ext    = ALLOWED_VID_EXTS.includes(rawExt) ? rawExt : 'mp4';
+      const rawExt   = uri.split('.').pop()?.toLowerCase() ?? '';
+      const ext      = ALLOWED_VID_EXTS.includes(rawExt) ? rawExt : 'mp4';
+      const videoMime = getVideoMime(ext);
 
       // Copy video to cache first — resolves content:// URIs on Android so
       // VideoThumbnails can access the file as a plain file:// path
@@ -121,7 +123,7 @@ export default function AgregarMediaScreen() {
       const thumbTask = FileSystem.createUploadTask(
         thumbUploadUrl, thumbLocalPath,
         {
-          httpMethod: 'POST',
+          httpMethod: 'PUT',
           uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
           headers: {
             Authorization: `Bearer ${session.access_token}`,
@@ -133,8 +135,10 @@ export default function AgregarMediaScreen() {
       const thumbResult = await thumbTask.uploadAsync();
       FileSystem.deleteAsync(thumbLocalPath, { idempotent: true }).catch(() => {});
 
-      if (!thumbResult || thumbResult.status >= 300)
-        throw new Error('No se pudo subir la captura del video.');
+      if (!thumbResult || thumbResult.status >= 300) {
+        if (__DEV__) console.error('[thumb upload]', thumbResult?.status, thumbResult?.body);
+        throw new Error(`No se pudo subir la captura del video (${thumbResult?.status ?? 'sin respuesta'}).`);
+      }
 
       const thumbUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${thumbPath}`;
 
@@ -145,11 +149,11 @@ export default function AgregarMediaScreen() {
       const uploadTask = FileSystem.createUploadTask(
         uploadUrl, localPath,
         {
-          httpMethod: 'POST',
+          httpMethod: 'PUT',
           uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
           headers: {
             Authorization: `Bearer ${session.access_token}`,
-            'Content-Type': `video/${ext}`,
+            'Content-Type': videoMime,
             'x-upsert': 'true',
           },
         },
@@ -157,8 +161,10 @@ export default function AgregarMediaScreen() {
       const result = await uploadTask.uploadAsync();
       FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
 
-      if (!result || result.status >= 300)
-        throw new Error('No se pudo subir el video. Verificá tu conexión.');
+      if (!result || result.status >= 300) {
+        if (__DEV__) console.error('[video upload]', result?.status, result?.body);
+        throw new Error(`No se pudo subir el video (${result?.status ?? 'sin respuesta'}): ${result?.body ?? 'sin detalle'}`);
+      }
 
       setUploadLabel('Guardando…');
 
