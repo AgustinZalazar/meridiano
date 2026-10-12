@@ -11,6 +11,7 @@ import { FadeImage } from '../../components/FadeImage';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
 import { useStudio } from '../../lib/use-studio';
+import { useToast } from '../../lib/toast';
 import {
   localIso, todayIso, getMondayIso, getSundayIso,
   getWeekDays, fmtLastReport, fmtDateHeading,
@@ -111,6 +112,7 @@ export default function InformeDiaScreen() {
   const projectId = Array.isArray(params.projectId) ? params.projectId[0] : params.projectId;
 
   const { studio } = useStudio();
+  const toast = useToast();
 
   const [loading,          setLoading]          = useState(true);
   const [openReport,       setOpenReport]       = useState<DailyReport | null>(null);
@@ -248,7 +250,7 @@ export default function InformeDiaScreen() {
     setStarting(true);
     const report = await createReport();
     setStarting(false);
-    if (!report) { Alert.alert('Error', 'No se pudo iniciar el informe.'); return; }
+    if (!report) { toast.error('No se pudo iniciar el informe.'); return; }
     setOpenReport(report);
     setMedia([]);
     setThumbUris({});
@@ -258,7 +260,7 @@ export default function InformeDiaScreen() {
     setStarting(true);
     const report = await createReport();
     setStarting(false);
-    if (!report) { Alert.alert('Error', 'No se pudo iniciar el informe.'); return; }
+    if (!report) { toast.error('No se pudo iniciar el informe.'); return; }
     setOpenReport(report);
     setMedia([]);
     setThumbUris({});
@@ -308,7 +310,7 @@ export default function InformeDiaScreen() {
     } catch (e: any) {
       setCloseStage(null);
       setClosing(false);
-      Alert.alert('Error al generar', e.message ?? 'Ocurrió un error inesperado.');
+      toast.error(e.message ?? 'Ocurrió un error inesperado.');
     }
   }
 

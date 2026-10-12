@@ -10,9 +10,11 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import * as Network from 'expo-network';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 import { useStudio } from '../../lib/use-studio';
+import { useToast } from '../../lib/toast';
 import { getVideoMime } from '../../utils/video';
 
 type MediaMode = 'foto' | 'video';
@@ -26,6 +28,8 @@ export default function AgregarMediaScreen() {
   const reportId   = Array.isArray(params.reportId)   ? params.reportId[0]   : params.reportId;
   const rubroName  = Array.isArray(params.rubroName)  ? params.rubroName[0]  : params.rubroName;
   const defaultMode = (Array.isArray(params.defaultMode) ? params.defaultMode[0] : params.defaultMode) === 'video' ? 'video' : 'foto';
+
+  const toast = useToast();
 
   const [mode, setMode]         = useState<MediaMode>(defaultMode as MediaMode);
   const [uri, setUri]           = useState<string | null>(null);
@@ -48,7 +52,7 @@ export default function AgregarMediaScreen() {
   async function handleCamera() {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permiso requerido', 'Necesitamos acceso a la cámara.');
+      toast.error('Necesitamos acceso a la cámara para continuar.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -91,6 +95,9 @@ export default function AgregarMediaScreen() {
     setSaving(true);
 
     try {
+      const netState = await Network.getNetworkStateAsync();
+      if (!netState.isConnected) throw new Error('Sin conexión a internet. Verificá tu red e intentá de nuevo.');
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Sin sesión activa');
 
@@ -179,7 +186,7 @@ export default function AgregarMediaScreen() {
       if (error) throw new Error('No se pudo guardar el elemento.');
       router.back();
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Ocurrió un error inesperado.');
+      toast.error(e.message ?? 'Ocurrió un error inesperado.');
     } finally {
       setSaving(false);
     }

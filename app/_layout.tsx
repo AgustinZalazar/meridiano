@@ -8,6 +8,8 @@ import { View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/auth-context';
+import { ToastProvider } from '../lib/toast';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { onboardingKey } from './welcome';
 import { SplashAnimation } from '../components/SplashAnimation';
 
@@ -89,10 +91,14 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider>
-      <StatusBar style="dark" />
-      <RootLayoutNav />
-      {!splashDone && <SplashWrapper onDone={() => setSplashDone(true)} />}
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ToastProvider>
+          <StatusBar style="dark" />
+          <RootLayoutNav />
+          {!splashDone && <SplashWrapper onDone={() => setSplashDone(true)} />}
+        </ToastProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
