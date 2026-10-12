@@ -35,6 +35,7 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
+    "husky": "^9.1.7",
     "jest": "^30.5.2",
     "jest-expo": "~54.0.0",
     "typescript": "~5.9.2"
@@ -45,7 +46,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "prepare": "husky"
   },
   "private": true
 }
