@@ -47,6 +47,7 @@
     "web": "expo start --web",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:e2e": "maestro test maestro/ --env-file maestro/.env",
     "prepare": "husky"
   },
   "private": true

@@ -1,0 +1,14 @@
+appId: com.meridiano.app
+---
+# Navegar entre tabs principales
+- launchApp
+- runFlow: ./_login.yaml
+
+- tapOn: "Pendientes"
+- assertVisible: "Pendientes"
+
+- tapOn: "Cuenta"
+- assertVisible: "Cuenta"
+
+- tapOn: "Proyectos"
+- assertVisible: "Proyectos"

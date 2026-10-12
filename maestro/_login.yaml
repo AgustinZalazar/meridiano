@@ -1,0 +1,14 @@
+# Subflow: login con credenciales de prueba.
+# Requiere variables de entorno: TEST_EMAIL, TEST_PASSWORD
+# Llamar con: - runFlow: ../_login.yaml
+---
+- tapOn:
+    id: "login-email"
+- clearText
+- inputText: "${TEST_EMAIL}"
+- tapOn:
+    id: "login-password"
+- clearText
+- inputText: "${TEST_PASSWORD}"
+- tapOn: "Entrar al estudio"
+- assertVisible: "Proyectos"

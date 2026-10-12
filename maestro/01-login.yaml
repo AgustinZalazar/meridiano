@@ -1,0 +1,25 @@
+appId: com.meridiano.app
+---
+# Happy path: login exitoso
+- launchApp:
+    clearState: true
+- assertVisible: "Bienvenido/a"
+- runFlow: ./_login.yaml
+
+# Error: contraseña incorrecta
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "login-email"
+- inputText: "${TEST_EMAIL}"
+- tapOn:
+    id: "login-password"
+- inputText: "wrong-password"
+- tapOn: "Entrar al estudio"
+- assertVisible: "Email o contraseña incorrectos."
+
+# Error: campo vacío
+- launchApp:
+    clearState: true
+- tapOn: "Entrar al estudio"
+- assertVisible: "Requerido"

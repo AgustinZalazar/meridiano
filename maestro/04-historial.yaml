@@ -1,0 +1,29 @@
+appId: com.meridiano.app
+# Requiere: TEST_PROJECT_NAME y TEST_RUBRO_NAME definidos en env
+---
+- launchApp
+- runFlow: ./_login.yaml
+
+# Navegar a historial via informe del día
+- tapOn: "${TEST_PROJECT_NAME}"
+- tapOn: "${TEST_RUBRO_NAME}"
+- tapOn: "Historial"
+- assertVisible: "Historial de informes"
+
+# Filtro: Contratistas
+- tapOn: "Contratistas"
+- assertNotVisible: "Oficina técnica"
+
+# Filtro: Oficina
+- tapOn: "Oficina"
+- assertNotVisible: "Contratistas"
+
+# Volver a Todos
+- tapOn: "Todos"
+- assertVisible: "Historial de informes"
+
+# Buscar por texto
+- tapOn:
+    id: "historial-search-btn"
+- inputText: "contratistas"
+- assertNotVisible: "Oficina técnica"

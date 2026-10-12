@@ -17,7 +17,7 @@ function Logo({ size = 48 }: { size?: number }) {
 }
 
 function Field({
-  label, value, onChangeText, placeholder, secureTextEntry, keyboardType, error, onBlur, showToggle,
+  label, value, onChangeText, placeholder, secureTextEntry, keyboardType, error, onBlur, showToggle, testID,
 }: {
   label: string;
   value: string;
@@ -28,6 +28,7 @@ function Field({
   error?: string | null;
   onBlur?: () => void;
   showToggle?: boolean;
+  testID?: string;
 }) {
   const [hidden, setHidden] = useState(!!secureTextEntry);
 
@@ -48,6 +49,7 @@ function Field({
           selectionColor={colors.arena}
           cursorColor={colors.arena}
           onBlur={onBlur}
+          testID={testID}
         />
         {showToggle && (
           <TouchableOpacity onPress={() => setHidden(h => !h)} hitSlop={10} activeOpacity={0.6}>
@@ -166,6 +168,7 @@ export default function LoginScreen() {
                   placeholder="nombre@estudio.com"
                   keyboardType="email-address"
                   error={emailError}
+                  testID="login-email"
                 />
                 <Field
                   label="CONTRASEÑA"
@@ -175,6 +178,7 @@ export default function LoginScreen() {
                   secureTextEntry
                   showToggle
                   error={passwordError}
+                  testID="login-password"
                 />
               </View>
 

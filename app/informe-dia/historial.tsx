@@ -195,6 +195,7 @@ export default function HistorialScreen() {
           style={s.circleBtn}
           activeOpacity={0.8}
           onPress={() => { setShowSearch(v => !v); setSearchQuery(''); }}
+          testID="historial-search-btn"
         >
           <Feather name={showSearch ? 'x' : 'search'} size={16} color={colors.crema} />
         </TouchableOpacity>

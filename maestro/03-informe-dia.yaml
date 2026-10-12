@@ -1,0 +1,33 @@
+appId: com.meridiano.app
+# Requiere: TEST_PROJECT_NAME y TEST_RUBRO_NAME definidos en env
+---
+- launchApp
+- runFlow: ./_login.yaml
+
+# Abrir proyecto de prueba
+- tapOn: "${TEST_PROJECT_NAME}"
+- assertVisible: "${TEST_RUBRO_NAME}"
+
+# Abrir informe del día para el rubro
+- tapOn: "${TEST_RUBRO_NAME}"
+- assertVisible: "INFORME DEL DÍA"
+
+# Abrir modal de agregar media
+- tapOn: "Agregar"
+- assertVisible: "AGREGAR AL INFORME"
+
+# Cambiar a modo video
+- tapOn: "Video"
+- assertVisible: "Video"
+
+# Cambiar a modo foto
+- tapOn: "Foto"
+- assertVisible: "Foto"
+
+# Cerrar modal
+- tapOn: "X"
+- assertVisible: "INFORME DEL DÍA"
+
+# Navegar a historial
+- tapOn: "Historial"
+- assertVisible: "Historial de informes"
