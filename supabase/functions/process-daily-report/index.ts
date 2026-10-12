@@ -113,47 +113,41 @@ Deno.serve(async (req) => {
     );
 
     // Build content blocks.
-    // Items WITH a note: send text only (no image) — prevents GPT-4o from overriding the
-    // inspector's own words with its visual interpretation.
-    // Items WITHOUT a note: send image so GPT-4o can describe what it sees.
-    const imageContent: { type: string; text?: string; image_url?: { url: string; detail: string } }[] = [];
+    // Items WITH a note: text only — prevents GPT-4o from overriding the inspector's words.
+    // Items WITHOUT a note: image at 'low' detail — enough to classify trade + brief description.
+    type ContentBlock =
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string; detail: 'low' } };
+
+    const contentBlocks: ContentBlock[] = [];
+    let hasImages = false;
 
     resolvedItems.forEach((item, index) => {
       const kind = item.type === 'foto' ? 'Foto' : 'Video';
       if (item.note) {
-        imageContent.push({
+        contentBlocks.push({
           type: 'text',
-          text: `--- ELEMENTO ${index + 1} (${kind}) ---\nDESCRIPCIÓN EXACTA DEL INSPECTOR: "${item.note}"\n[sin imagen — usá solo este texto]`,
+          text: `[${index + 1}/${kind}] INSPECTOR: "${item.note}"`,
         });
       } else {
-        imageContent.push({
-          type: 'text',
-          text: `--- ELEMENTO ${index + 1} (${kind}) ---\n[sin nota — describí el problema visible en la imagen]:`,
-        });
-        imageContent.push({ type: 'image_url', image_url: { url: item.url, detail: 'high' } });
+        contentBlocks.push({ type: 'text', text: `[${index + 1}/${kind}] sin nota:` });
+        contentBlocks.push({ type: 'image_url', image_url: { url: item.url, detail: 'low' } });
+        hasImages = true;
       }
     });
 
     const typeLabel = dailyReport.type === 'oficina' ? 'oficina técnica' : 'contratistas';
 
-    const systemPrompt = `Sos un sistema de registro de inspecciones de obras. Convertís los elementos documentados por un inspector en pendientes estructurados. Para elementos con "DESCRIPCIÓN EXACTA DEL INSPECTOR": copiá esa frase tal cual como description (solo corregí errores tipográficos obvios), y clasificá el trade según el texto. Para elementos sin nota: describí brevemente el problema visible en la imagen y clasificá el trade. Respondés exclusivamente con JSON válido, sin texto adicional.`;
+    // Use gpt-4o only when there are images; gpt-4o-mini suffices for text-only
+    const model = hasImages ? 'gpt-4o' : 'gpt-4o-mini';
 
-    const userPrompt = `Procesá ${resolvedItems.length} elemento${resolvedItems.length !== 1 ? 's' : ''} del informe del día (${typeLabel}).
+    const systemPrompt = `Inspección de obras. Convertís elementos en JSON de pendientes. Con "INSPECTOR: ...": copiá esa frase como description (solo corregí errores tipográficos). Sin nota: describí brevemente el problema visual. Solo JSON válido, sin texto adicional.`;
 
-Reglas estrictas:
-1. Elemento con DESCRIPCIÓN EXACTA DEL INSPECTOR → description = esa frase (copiada, mínimos cambios). Trade = clasificá por el texto.
-2. Elemento sin nota → description = descripción breve del problema visual. Trade = clasificá por la imagen.
-3. Un elemento = exactamente un ítem, en el mismo orden. No combines ni separes.
+    const userPrompt = `${resolvedItems.length} elemento${resolvedItems.length !== 1 ? 's' : ''}, informe ${typeLabel}. Un elemento = un ítem, mismo orden.
 
-JSON de respuesta:
-{
-  "items": [
-    { "description": "...", "trade": "especialidad o null" }
-  ],
-  "summary": "resumen de 1-2 oraciones de la jornada"
-}
+{"items":[{"description":"...","trade":"..."}],"summary":"1-2 oraciones"}
 
-Trades válidos: albanilería, electricidad, plomería, carpintería, pintura, herrería, vidriería, HVAC, impermeabilización, estructura, general.`;
+Trades: albanilería, electricidad, plomería, carpintería, pintura, herrería, vidriería, HVAC, impermeabilización, estructura, general, null.`;
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -162,19 +156,13 @@ Trades válidos: albanilería, electricidad, plomería, carpintería, pintura, h
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: [
-              ...imageContent,
-              { type: 'text', text: userPrompt },
-            ],
-          },
+          { role: 'user', content: [...contentBlocks, { type: 'text', text: userPrompt }] },
         ],
         response_format: { type: 'json_object' },
-        max_tokens: 1500,
+        max_tokens: 800,
         temperature: 0.2,
       }),
     });

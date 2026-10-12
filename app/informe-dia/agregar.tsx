@@ -19,13 +19,14 @@ type MediaMode = 'foto' | 'video';
 export default function AgregarMediaScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ reportId: string; rubroName: string }>();
+  const params = useLocalSearchParams<{ reportId: string; rubroName: string; defaultMode?: string }>();
   const { studio, loading: studioLoading } = useStudio();
 
-  const reportId = Array.isArray(params.reportId) ? params.reportId[0] : params.reportId;
-  const rubroName = Array.isArray(params.rubroName) ? params.rubroName[0] : params.rubroName;
+  const reportId   = Array.isArray(params.reportId)   ? params.reportId[0]   : params.reportId;
+  const rubroName  = Array.isArray(params.rubroName)  ? params.rubroName[0]  : params.rubroName;
+  const defaultMode = (Array.isArray(params.defaultMode) ? params.defaultMode[0] : params.defaultMode) === 'video' ? 'video' : 'foto';
 
-  const [mode, setMode]         = useState<MediaMode>('foto');
+  const [mode, setMode]         = useState<MediaMode>(defaultMode as MediaMode);
   const [uri, setUri]           = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [note, setNote]         = useState('');
@@ -96,9 +97,16 @@ export default function AgregarMediaScreen() {
       const rawExt = uri.split('.').pop()?.toLowerCase() ?? '';
       const ext    = ALLOWED_VID_EXTS.includes(rawExt) ? rawExt : 'mp4';
 
-      // Extract thumbnail from local video before uploading
+      // Copy video to cache first — resolves content:// URIs on Android so
+      // VideoThumbnails can access the file as a plain file:// path
+      const cacheDir  = `${FileSystem.cacheDirectory ?? ''}daily_uploads/`;
+      await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+      const localPath = `${cacheDir}${Date.now()}.${ext}`;
+      await FileSystem.copyAsync({ from: uri, to: localPath });
+
+      // Extract thumbnail from the cached local file
       setUploadLabel('Extrayendo captura…');
-      const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(uri, { time: 1000 });
+      const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(localPath, { time: 1000 });
 
       // Upload thumbnail to storage
       const thumbPath   = `${studio.id}/daily/${reportId}/thumb_${Date.now()}.jpg`;
@@ -129,12 +137,6 @@ export default function AgregarMediaScreen() {
         throw new Error('No se pudo subir la captura del video.');
 
       const thumbUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/processing/${thumbPath}`;
-
-      // Copy video to cache (handles content:// URIs on Android)
-      const cacheDir  = `${FileSystem.cacheDirectory ?? ''}daily_uploads/`;
-      await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
-      const localPath = `${cacheDir}${Date.now()}.${ext}`;
-      await FileSystem.copyAsync({ from: uri, to: localPath });
 
       const storagePath = `${studio.id}/daily/${reportId}/${Date.now()}.${ext}`;
       const uploadUrl   = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/processing/${storagePath}`;
