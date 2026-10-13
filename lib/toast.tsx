@@ -40,10 +40,10 @@ const ICON: Record<ToastType, React.ComponentProps<typeof Feather>['name']> = {
   info:    'info',
 };
 
-const BG: Record<ToastType, string> = {
+const ACCENT: Record<ToastType, string> = {
   error:   colors.error,
   success: colors.success,
-  info:    colors.crema,
+  info:    colors.arena,
 };
 
 // ─── Single toast (animated) ──────────────────────────────────────────────────
@@ -67,8 +67,10 @@ function ToastView({ item, onDone }: { item: ToastItem; onDone: () => void }) {
   }, []);
 
   return (
-    <Animated.View style={[s.toast, { backgroundColor: BG[item.type], opacity, transform: [{ translateY }] }]}>
-      <Feather name={ICON[item.type]} size={15} color="#FFF" />
+    <Animated.View style={[s.toast, { opacity, transform: [{ translateY }] }]}>
+      <View style={[s.iconWrap, { backgroundColor: `${ACCENT[item.type]}26` }]}>
+        <Feather name={ICON[item.type]} size={14} color={ACCENT[item.type]} />
+      </View>
       <Text style={s.msg} numberOfLines={3}>{item.message}</Text>
     </Animated.View>
   );
@@ -122,13 +124,18 @@ const s = StyleSheet.create({
     gap: 8, zIndex: 9999,
   },
   toast: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 13,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18, shadowRadius: 12, elevation: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: colors.crema,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.24, shadowRadius: 16, elevation: 10,
+  },
+  iconWrap: {
+    width: 30, height: 30, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
   msg: {
     flex: 1, fontFamily: fonts.archivo.semibold,
-    fontSize: 13.5, color: '#FFF', lineHeight: 18,
+    fontSize: 13.5, color: colors.tinta, lineHeight: 18,
   },
 });

@@ -551,6 +551,7 @@ export default function CuentaScreen() {
         </View>
 
         <Text style={styles.version}>MERIDIANO v1.0.0</Text>
+
       </ScrollView>
 
       {/* ── Sheet: editar perfil ── */}
