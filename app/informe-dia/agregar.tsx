@@ -61,6 +61,7 @@ export default function AgregarMediaScreen() {
       quality: 0.85,
       allowsEditing: false,
       videoMaxDuration: 180,
+      videoQuality: ImagePicker.UIImagePickerControllerQualityType.Medium,
     });
     if (!result.canceled && result.assets[0]) {
       setUri(result.assets[0].uri);
@@ -116,11 +117,11 @@ export default function AgregarMediaScreen() {
       await FileSystem.copyAsync({ from: uri, to: localPath });
 
       // Pre-flight size check — reject before hitting the server limit
-      const MAX_VIDEO_BYTES = 200 * 1024 * 1024; // 200 MB
-      const fileInfo = await FileSystem.getInfoAsync(localPath, { size: true });
+      const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB
+      const fileInfo = await FileSystem.getInfoAsync(localPath);
       if (fileInfo.exists && (fileInfo as any).size > MAX_VIDEO_BYTES) {
         FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
-        throw new Error('El video es demasiado grande (máx. 200 MB). Grabá un clip más corto e intentá de nuevo.');
+        throw new Error('El video es demasiado grande (máx. 500 MB). Grabá un clip más corto e intentá de nuevo.');
       }
 
       // Extract thumbnail from the cached local file
