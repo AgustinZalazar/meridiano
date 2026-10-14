@@ -117,11 +117,11 @@ export default function AgregarMediaScreen() {
       await FileSystem.copyAsync({ from: uri, to: localPath });
 
       // Pre-flight size check — reject before hitting the server limit
-      const MAX_VIDEO_BYTES = 500 * 1024 * 1024; // 500 MB
+      const MAX_VIDEO_BYTES = 49 * 1024 * 1024; // 49 MB (Supabase free tier limit is 50 MB)
       const fileInfo = await FileSystem.getInfoAsync(localPath);
       if (fileInfo.exists && (fileInfo as any).size > MAX_VIDEO_BYTES) {
         FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
-        throw new Error('El video es demasiado grande (máx. 500 MB). Grabá un clip más corto e intentá de nuevo.');
+        throw new Error('El video supera el límite de 50 MB. Grabá un clip más corto e intentá de nuevo.');
       }
 
       // Extract thumbnail from the cached local file
@@ -181,7 +181,7 @@ export default function AgregarMediaScreen() {
 
       if (!result || result.status >= 300) {
         if (__DEV__) console.error('[video upload]', result?.status, result?.body);
-        if (result?.status === 413) throw new Error('El video supera el límite permitido por el servidor. Grabá un clip más corto e intentá de nuevo.');
+        if (result?.status === 413) throw new Error('El video supera el límite de 50 MB. Grabá un clip más corto e intentá de nuevo.');
         throw new Error(`No se pudo subir el video (${result?.status ?? 'sin respuesta'}): ${result?.body ?? 'sin detalle'}`);
       }
 
