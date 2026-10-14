@@ -7,7 +7,8 @@ const corsHeaders = {
 
 interface MediaItem {
   type: 'foto' | 'video';
-  url: string;   // foto: annotated image URL — video: extracted thumbnail URL
+  url: string;         // foto: annotated image URL — video: thumbnail URL
+  video_path?: string; // video only: storage path for Whisper transcription
   note: string | null;
 }
 
@@ -112,9 +113,45 @@ Deno.serve(async (req) => {
       })
     );
 
+    // Transcribe audio from videos without a note using Whisper
+    const WHISPER_SIZE_LIMIT = 24 * 1024 * 1024; // 24 MB (Whisper API limit is 25 MB)
+    const transcriptions: Record<number, string> = {};
+    await Promise.all(
+      resolvedItems.map(async (item, index) => {
+        if (item.type !== 'video' || item.note || !item.video_path) return;
+        try {
+          const { data: signedData, error: signErr } = await supabaseAdmin.storage
+            .from('processing')
+            .createSignedUrl(item.video_path, 300);
+          if (signErr || !signedData?.signedUrl) return;
+
+          const videoRes = await fetch(signedData.signedUrl);
+          if (!videoRes.ok) return;
+
+          const buffer = await videoRes.arrayBuffer();
+          if (buffer.byteLength > WHISPER_SIZE_LIMIT) return; // too large — fall back to thumbnail
+
+          const ext = item.video_path.split('.').pop() ?? 'mp4';
+          const formData = new FormData();
+          formData.append('file', new Blob([buffer], { type: `video/${ext}` }), `audio.${ext}`);
+          formData.append('model', 'whisper-1');
+          formData.append('language', 'es');
+
+          const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}` },
+            body: formData,
+          });
+          if (!whisperRes.ok) return;
+          const { text } = await whisperRes.json();
+          if (text?.trim()) transcriptions[index] = text.trim();
+        } catch { /* silent — fall back to thumbnail */ }
+      })
+    );
+
     // Build content blocks.
-    // Items WITH a note: text only — prevents GPT-4o from overriding the inspector's words.
-    // Items WITHOUT a note: image at 'low' detail — enough to classify trade + brief description.
+    // Items WITH a note or transcription: text only — inspector's words take priority.
+    // Items WITHOUT note or transcription: image at 'low' detail — classify from thumbnail.
     type ContentBlock =
       | { type: 'text'; text: string }
       | { type: 'image_url'; image_url: { url: string; detail: 'low' } };
@@ -124,10 +161,11 @@ Deno.serve(async (req) => {
 
     resolvedItems.forEach((item, index) => {
       const kind = item.type === 'foto' ? 'Foto' : 'Video';
-      if (item.note) {
+      const effectiveNote = item.note ?? transcriptions[index] ?? null;
+      if (effectiveNote) {
         contentBlocks.push({
           type: 'text',
-          text: `[${index + 1}/${kind}] INSPECTOR: "${item.note}"`,
+          text: `[${index + 1}/${kind}] INSPECTOR: "${effectiveNote}"`,
         });
       } else {
         contentBlocks.push({ type: 'text', text: `[${index + 1}/${kind}] sin nota:` });

@@ -1,0 +1,1 @@
+ALTER TABLE report_media ADD COLUMN IF NOT EXISTS video_path TEXT;

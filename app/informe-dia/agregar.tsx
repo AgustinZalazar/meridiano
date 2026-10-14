@@ -187,12 +187,12 @@ export default function AgregarMediaScreen() {
 
       setUploadLabel('Guardando…');
 
-      // Store thumbnail URL as uri — this is what the generate flow sends to AI
       const { error } = await supabase.from('report_media').insert({
-        report_id: reportId,
-        type:      'video',
-        uri:       thumbUrl,
-        note:      note.trim() || null,
+        report_id:  reportId,
+        type:       'video',
+        uri:        thumbUrl,
+        video_path: storagePath,
+        note:       note.trim() || null,
       });
 
       if (error) throw new Error('No se pudo guardar el elemento.');

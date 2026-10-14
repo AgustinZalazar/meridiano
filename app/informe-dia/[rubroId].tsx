@@ -32,6 +32,7 @@ interface ReportMedia {
   id: string;
   type: 'foto' | 'video';
   uri: string | null;
+  video_path: string | null;
   note: string | null;
   created_at: string;
 }
@@ -169,7 +170,7 @@ export default function InformeDiaScreen() {
 
       if (open) {
         const { data } = await supabase.from('report_media')
-          .select('id, type, uri, note, created_at').eq('report_id', open.id).order('created_at');
+          .select('id, type, uri, video_path, note, created_at').eq('report_id', open.id).order('created_at');
         const items = (data as ReportMedia[]) ?? [];
         setMedia(items);
 
@@ -278,10 +279,10 @@ export default function InformeDiaScreen() {
       if (!session) throw new Error('Sin sesión activa');
 
       setCloseStage('Preparando material…');
-      const mediaItems: { type: 'foto' | 'video'; url: string; note: string | null }[] = [];
+      const mediaItems: { type: 'foto' | 'video'; url: string; video_path?: string; note: string | null }[] = [];
       for (const item of media) {
         if (!item.uri) continue;
-        mediaItems.push({ type: item.type, url: item.uri, note: item.note });
+        mediaItems.push({ type: item.type, url: item.uri, video_path: item.video_path ?? undefined, note: item.note });
       }
       if (mediaItems.length === 0) throw new Error('No hay material válido para generar el informe.');
 
