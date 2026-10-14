@@ -754,7 +754,7 @@ export default function ProyectoScreen() {
               })}
               onGrabacion={() => router.push({
                 pathname: '/nueva-grabacion',
-                params: { projectId: project.id, projectName: project.name, rubroName: item.name },
+                params: { projectId: project.id, projectName: project.name, rubroName: item.name, rubroId: item.id },
               })}
               onInformeDia={() => router.push({
                 pathname: '/informe-dia/[rubroId]',

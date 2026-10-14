@@ -335,7 +335,7 @@ export default function NuevaGrabacionScreen() {
     return parts.length > 0 ? parts.join(' · ') : null;
   }
 
-  const canContinue = selectedProjectId && selectedRubro && (
+  const canContinue = selectedProjectId && selectedRubro && selectedRubroId && (
     mode === 'video' ? videoUri !== null : photoUri !== null
   );
 
