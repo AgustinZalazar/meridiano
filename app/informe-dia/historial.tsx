@@ -177,8 +177,22 @@ export default function HistorialScreen() {
     const key = getMonthKey(r.date);
     const last = grouped[grouped.length - 1];
     if (last && last.key === key) last.items.push(r);
+
     else grouped.push({ key, label: getMonthLabel(r.date), items: [r] });
   });
+
+  const renderGroupItem = useCallback(({ item: group }: { item: typeof grouped[0] }) => (
+    <View style={s.group}>
+      <Text style={s.monthLabel}>{group.label}</Text>
+      {group.items.map(report => (
+        <ReportCard
+          key={report.id}
+          report={report}
+          onPress={() => router.push(`/informe/${report.id}?type=${report.type}`)}
+        />
+      ))}
+    </View>
+  ), [router]);
 
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>
@@ -270,18 +284,7 @@ export default function HistorialScreen() {
               </Text>
             </View>
           }
-          renderItem={useCallback(({ item: group }: { item: typeof grouped[0] }) => (
-            <View style={s.group}>
-              <Text style={s.monthLabel}>{group.label}</Text>
-              {group.items.map(report => (
-                <ReportCard
-                  key={report.id}
-                  report={report}
-                  onPress={() => router.push(`/informe/${report.id}?type=${report.type}`)}
-                />
-              ))}
-            </View>
-          ), [router])}
+          renderItem={renderGroupItem}
         />
       )}
     </View>
