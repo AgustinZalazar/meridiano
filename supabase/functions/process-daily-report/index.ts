@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
 
 {"items":[{"description":"...","trade":"..."}],"summary":"1-2 oraciones"}
 
-Trades: albanilería, electricidad, plomería, carpintería, pintura, herrería, vidriería, HVAC, impermeabilización, estructura, general, null.`;
+Trades: albanilería, electricidad, plomería, carpintería, pintura, herrería, vidriería, HVAC, impermeabilización, estructura, general. Usá JSON null (sin comillas) si no podés identificar el rubro.`;
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -218,7 +218,7 @@ Trades: albanilería, electricidad, plomería, carpintería, pintura, herrería,
           project_id:  dailyReport.project_id,
           rubro_id:    dailyReport.rubro_id ?? null,
           description: String(item.description).slice(0, 1000),
-          trade:       item.trade ? String(item.trade).slice(0, 100) : null,
+          trade:       (item.trade && item.trade !== 'null') ? String(item.trade).slice(0, 100) : null,
           status:      'pendiente',
           source:      'ai',
           created_by:  user.id,

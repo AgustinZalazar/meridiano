@@ -70,7 +70,7 @@ function escHtml(s: string): string {
 function groupByTrade(items: PendingItem[]): { trade: string; items: PendingItem[] }[] {
   const map = new Map<string, PendingItem[]>();
   for (const item of items) {
-    const key = item.trade ?? 'General';
+    const key = (item.trade && item.trade !== 'null') ? item.trade : 'Sin categoría';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(item);
   }
@@ -104,7 +104,7 @@ function ItemCard({ item, frameUrl, imageUri, uploading, onPickImage, onImagePre
       <View style={styles.itemDot} />
       <View style={styles.itemBody}>
         <Text style={styles.itemDescription}>{item.description}</Text>
-        {item.trade && (
+        {item.trade && item.trade !== 'null' && (
           <View style={{ marginTop: 4 }}>
             <Chip label={item.trade} />
           </View>
@@ -426,7 +426,7 @@ export default function InformeScreen() {
       return `
   <div class="item-card">
     <div class="item-meta">
-      <span class="item-trade">${escHtml(item.trade ?? 'General')}</span>
+      <span class="item-trade">${escHtml((item.trade && item.trade !== 'null') ? item.trade : 'General')}</span>
       <span class="item-status">${escHtml(item.status)}</span>
     </div>
     <div class="item-desc">${escHtml(item.description)}</div>
@@ -934,7 +934,7 @@ export default function InformeScreen() {
                       activeOpacity={0.7}
                     >
                       <View style={styles.pdfItemTop}>
-                        <Text style={styles.pdfTdTrade}>{item.trade ?? '—'}</Text>
+                        <Text style={styles.pdfTdTrade}>{(item.trade && item.trade !== 'null') ? item.trade : '—'}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           <Text style={styles.pdfTdStatus}>{item.status}</Text>
                           <Feather name="edit-2" size={8} color="#CCC" />
