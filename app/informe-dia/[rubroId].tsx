@@ -321,6 +321,10 @@ export default function InformeDiaScreen() {
     setThumbUris({ ...signedCache.current });
   }, []);
 
+  const renderMediaItem = useCallback(({ item }: { item: ReportMedia }) => (
+    <MediaCard item={item} thumb={thumbUris[item.id]} onDelete={handleDeleteMedia} />
+  ), [thumbUris, handleDeleteMedia]);
+
   function handleCancelReport() {
     if (!openReport) return;
     Alert.alert(
@@ -712,13 +716,7 @@ export default function InformeDiaScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={[s.listContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
-        renderItem={useCallback(({ item }: { item: ReportMedia }) => (
-          <MediaCard
-            item={item}
-            thumb={thumbUris[item.id]}
-            onDelete={handleDeleteMedia}
-          />
-        ), [thumbUris, handleDeleteMedia])}
+        renderItem={renderMediaItem}
         ListEmptyComponent={
           <View style={s.emptyMedia}>
             <Feather name="inbox" size={28} color={colors.faint} />

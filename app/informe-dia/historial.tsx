@@ -9,7 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { FadeImage } from '../../components/FadeImage';
 import { supabase } from '../../lib/supabase';
-import { getDateBlock, getMonthLabel } from '../../utils/dates';
+import { getDateBlock, getMonthLabel, parseLocalDate } from '../../utils/dates';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -161,7 +161,7 @@ export default function HistorialScreen() {
     if (typeFilter !== 'all' && r.type !== typeFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const dateStr = getMonthLabel(r.date).toLowerCase() + ' ' + localDate(r.date).getDate();
+      const dateStr = getMonthLabel(r.date).toLowerCase() + ' ' + parseLocalDate(r.date).getDate();
       if (!typeLabel(r.type).includes(q) && !dateStr.includes(q)) return false;
     }
     return true;
