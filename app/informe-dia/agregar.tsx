@@ -42,6 +42,7 @@ export default function AgregarMediaScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: mode === 'foto' ? ['images'] : ['videos'],
       quality: 0.85,
+      videoMaxDuration: 180,
     });
     if (!result.canceled && result.assets[0]) {
       setUri(result.assets[0].uri);
@@ -59,6 +60,7 @@ export default function AgregarMediaScreen() {
       mediaTypes: mode === 'foto' ? ['images'] : ['videos'],
       quality: 0.85,
       allowsEditing: false,
+      videoMaxDuration: 180,
     });
     if (!result.canceled && result.assets[0]) {
       setUri(result.assets[0].uri);
@@ -112,6 +114,14 @@ export default function AgregarMediaScreen() {
       await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
       const localPath = `${cacheDir}${Date.now()}.${ext}`;
       await FileSystem.copyAsync({ from: uri, to: localPath });
+
+      // Pre-flight size check — reject before hitting the server limit
+      const MAX_VIDEO_BYTES = 200 * 1024 * 1024; // 200 MB
+      const fileInfo = await FileSystem.getInfoAsync(localPath, { size: true });
+      if (fileInfo.exists && (fileInfo as any).size > MAX_VIDEO_BYTES) {
+        FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
+        throw new Error('El video es demasiado grande (máx. 200 MB). Grabá un clip más corto e intentá de nuevo.');
+      }
 
       // Extract thumbnail from the cached local file
       setUploadLabel('Extrayendo captura…');
@@ -170,6 +180,7 @@ export default function AgregarMediaScreen() {
 
       if (!result || result.status >= 300) {
         if (__DEV__) console.error('[video upload]', result?.status, result?.body);
+        if (result?.status === 413) throw new Error('El video supera el límite permitido por el servidor. Grabá un clip más corto e intentá de nuevo.');
         throw new Error(`No se pudo subir el video (${result?.status ?? 'sin respuesta'}): ${result?.body ?? 'sin detalle'}`);
       }
 
