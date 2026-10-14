@@ -1,6 +1,7 @@
 import React, { type ErrorInfo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import * as Sentry from '@sentry/react-native';
 import { colors, fonts, spacing } from '../constants/theme';
 
 interface State {
@@ -20,6 +21,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
+    Sentry.captureException(error, { extra: { componentStack: info.componentStack } });
     if (__DEV__) {
       console.error('[ErrorBoundary] Unhandled error:', error.message);
       console.error('[ErrorBoundary] Component stack:', info.componentStack);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as Sentry from '@sentry/react-native';
 import * as Font from 'expo-font';
 import { Archivo_600SemiBold, Archivo_700Bold } from '@expo-google-fonts/archivo';
 import { IBMPlexMono_400Regular, IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
@@ -11,6 +12,12 @@ import { AuthProvider, useAuth } from '../lib/auth-context';
 import { ToastProvider } from '../lib/toast';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { onboardingKey } from './welcome';
+
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: 1.0,
+  enabled: !__DEV__,
+});
 import { SplashAnimation } from '../components/SplashAnimation';
 
 function RootLayoutNav() {
@@ -71,7 +78,7 @@ function SplashWrapper({ onDone }: { onDone: () => void }) {
   return <SplashAnimation isReady={!loading} onDone={onDone} />;
 }
 
-export default function RootLayout() {
+export default Sentry.wrap(function RootLayout() {
   const [fontsReady, setFontsReady] = useState(false);
   const [splashDone, setSplashDone] = useState(false);
 
@@ -101,4 +108,4 @@ export default function RootLayout() {
       </AuthProvider>
     </ErrorBoundary>
   );
-}
+});

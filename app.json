@@ -34,6 +34,14 @@
     "plugins": [
       "expo-router",
       "expo-font",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "meridiano",
+          "organization": "meridiano-7m"
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-image-picker",
@@ -42,7 +50,8 @@
           "cameraPermission": "Permitir acceso a la cámara para tomar fotos y grabar videos en obra.",
           "microphonePermission": "Permitir acceso al micrófono para grabar el audio del recorrido."
         }
-      ]
+      ],
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true
