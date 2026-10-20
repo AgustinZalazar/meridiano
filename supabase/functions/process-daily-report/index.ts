@@ -149,6 +149,14 @@ Deno.serve(async (req) => {
       })
     );
 
+    // Delete video files from storage — thumbnails and transcriptions are already captured
+    const videoPaths = resolvedItems
+      .filter(item => item.type === 'video' && item.video_path)
+      .map(item => item.video_path as string);
+    if (videoPaths.length > 0) {
+      await supabaseAdmin.storage.from('processing').remove(videoPaths);
+    }
+
     // Build content blocks.
     // Items WITH a note or transcription: text only — inspector's words take priority.
     // Items WITHOUT note or transcription: image at 'low' detail — classify from thumbnail.

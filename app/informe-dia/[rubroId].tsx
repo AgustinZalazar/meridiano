@@ -595,15 +595,16 @@ export default function InformeDiaScreen() {
               </View>
 
               <TouchableOpacity
-                style={[s.iniciarNuevaBtn, starting && { opacity: 0.5 }]}
-                onPress={handleStart}
-                disabled={starting}
+                style={s.iniciarNuevaBtn}
+                onPress={() => Alert.alert(
+                  'Informe ya generado',
+                  'Ya creaste el informe de hoy. Podés iniciar una nueva jornada mañana.',
+                  [{ text: 'Entendido' }]
+                )}
                 activeOpacity={0.85}
               >
-                {starting
-                  ? <ActivityIndicator color={colors.crema} size="small" />
-                  : <><Feather name="play" size={14} color={colors.crema} /><Text style={s.iniciarNuevaBtnText}>Iniciar nueva jornada</Text></>
-                }
+                <Feather name="lock" size={14} color={colors.gris} />
+                <Text style={[s.iniciarNuevaBtnText, { color: colors.gris }]}>Disponible mañana</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
