@@ -399,7 +399,7 @@ export default function InformeScreen() {
     }
   }
 
-  function buildHtml(fotoBase64?: string | null, itemImagesBase64?: Record<string, string>, frameImagesBase64?: Record<string, string>, frameSignedUrls?: Record<string, string>): string {
+  function buildHtml(fotoBase64?: string | null, itemImagesBase64?: Record<string, string>, frameImagesBase64?: Record<string, string>, frameSignedUrls?: Record<string, string>, reportMediaBase64?: Record<string, string>): string {
     if (!report) return '';
     const isOf = report.type === 'oficina';
     const dateStr = formatDate(report.created_at);
@@ -469,6 +469,9 @@ export default function InformeScreen() {
   .item-desc { font-size: 12px; color: #12151A; line-height: 1.55; }
   .item-img { width: 100%; max-height: 240px; object-fit: contain; border-radius: 6px; margin-top: 10px; display: block; border: 1px solid #EEE; background: #F5F5F3; }
   .item-img-label { font-size: 8px; color: #AAA; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  .media-section { margin-bottom: 24px; }
+  .media-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .media-thumb { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; border: 1px solid #EEE; display: block; }
   .footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid #eee; font-size: 9px; color: #aaa; text-align: center; letter-spacing: 0.5px; text-transform: uppercase; }
 </style>
 </head>
@@ -520,6 +523,18 @@ export default function InformeScreen() {
   <div class="foto-section">
     <div class="foto-label">FOTO CON INDICACIONES</div>
     <img class="foto-img" src="${fotoAnnotatedUrl}" />
+  </div>` : ''}
+
+  ${reportMediaBase64 && Object.keys(reportMediaBase64).length > 0 ? `
+  <div class="media-section">
+    <div class="foto-label">REGISTRO DEL DÍA</div>
+    <div class="media-grid">
+      ${reportMedia.map((m) => {
+        const b64 = reportMediaBase64![m.id];
+        if (!b64) return '';
+        return `<img class="media-thumb" src="data:image/jpeg;base64,${b64}" />`;
+      }).filter(Boolean).join('')}
+    </div>
   </div>` : ''}
 
   <div class="items-section">
@@ -578,7 +593,21 @@ export default function InformeScreen() {
         })
       );
 
-      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64, itemImagesBase64, frameImagesBase64, frameUrls), base64: false });
+      // Download report media (daily report photos & video thumbnails) as base64
+      const reportMediaBase64: Record<string, string> = {};
+      await Promise.all(
+        Object.entries(reportMediaUrls).map(async ([mediaId, uri]) => {
+          try {
+            const tmpPath = `${FileSystem.cacheDirectory}media_${mediaId}_${Date.now()}.jpg`;
+            const dl = await FileSystem.downloadAsync(uri, tmpPath);
+            if (dl.status === 200) {
+              reportMediaBase64[mediaId] = await FileSystem.readAsStringAsync(dl.uri, { encoding: FileSystem.EncodingType.Base64 });
+            }
+          } catch { /* skip */ }
+        })
+      );
+
+      const { uri } = await Print.printToFileAsync({ html: buildHtml(fotoBase64, itemImagesBase64, frameImagesBase64, frameUrls, reportMediaBase64), base64: false });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Exportar informe' });
     } catch {
       Alert.alert('Error', 'No se pudo generar el PDF.');
