@@ -525,14 +525,16 @@ export default function InformeScreen() {
     <img class="foto-img" src="${fotoAnnotatedUrl}" />
   </div>` : ''}
 
-  ${reportMediaBase64 && Object.keys(reportMediaBase64).length > 0 ? `
+  ${reportMedia.length > 0 ? `
   <div class="media-section">
     <div class="foto-label">REGISTRO DEL DÍA</div>
     <div class="media-grid">
       ${reportMedia.map((m) => {
-        const b64 = reportMediaBase64![m.id];
-        if (!b64) return '';
-        return `<img class="media-thumb" src="data:image/jpeg;base64,${b64}" />`;
+        const b64 = reportMediaBase64?.[m.id];
+        const fallback = reportMediaUrls[m.id];
+        const src = b64 ? `data:image/jpeg;base64,${b64}` : (fallback ? escHtml(fallback) : '');
+        if (!src) return '';
+        return `<img class="media-thumb" src="${src}" />`;
       }).filter(Boolean).join('')}
     </div>
   </div>` : ''}
