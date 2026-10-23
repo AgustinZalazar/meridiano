@@ -53,6 +53,12 @@
       ],
       "@sentry/react-native"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/5fde4a4c-13ca-4faa-8fe5-4d1185a333dc"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "experiments": {
       "typedRoutes": true
     },
