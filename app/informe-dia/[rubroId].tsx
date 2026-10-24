@@ -12,7 +12,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
 import { useStudio } from '../../lib/use-studio';
 import { useToast } from '../../lib/toast';
-import { scheduleInformeReminder, cancelInformeReminder } from '../../lib/informe-reminder';
+import { scheduleInformeReminder, cancelInformeReminder, scheduleTestNotification } from '../../lib/informe-reminder';
 import {
   localIso, todayIso, getMondayIso, getSundayIso,
   getWeekDays, fmtLastReport, fmtDateHeading,
@@ -504,6 +504,11 @@ export default function InformeDiaScreen() {
       return (
         <View style={[s.safe, { paddingTop: insets.top }]}>
           <TopBar rubroName={rubroName ?? null} rubroId={rubroId ?? null} openReport={openReport} onCancel={handleCancelReport} />
+          {__DEV__ && (
+            <TouchableOpacity style={s.devTestBtn} onPress={() => void scheduleTestNotification()} activeOpacity={0.8}>
+              <Text style={s.devTestBtnText}>🔔 Test notif (5s)</Text>
+            </TouchableOpacity>
+          )}
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 40 }]}
@@ -600,6 +605,11 @@ export default function InformeDiaScreen() {
     return (
       <View style={[s.safe, { paddingTop: insets.top }]}>
         <TopBar rubroName={rubroName ?? null} rubroId={rubroId ?? null} openReport={openReport} onCancel={handleCancelReport} />
+        {__DEV__ && (
+          <TouchableOpacity style={s.devTestBtn} onPress={() => void scheduleTestNotification()} activeOpacity={0.8}>
+            <Text style={s.devTestBtnText}>🔔 Test notif (5s)</Text>
+          </TouchableOpacity>
+        )}
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 32 }]}
@@ -680,6 +690,15 @@ export default function InformeDiaScreen() {
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>
       <TopBar rubroName={rubroName ?? null} rubroId={rubroId ?? null} openReport={openReport} onCancel={handleCancelReport} />
+      {__DEV__ && (
+        <TouchableOpacity
+          style={s.devTestBtn}
+          onPress={() => void scheduleTestNotification()}
+          activeOpacity={0.8}
+        >
+          <Text style={s.devTestBtnText}>🔔 Test notif (5s)</Text>
+        </TouchableOpacity>
+      )}
 
       {closing && closeStage && (
         <View style={s.processingBanner}>
@@ -1035,4 +1054,10 @@ const s = StyleSheet.create({
     backgroundColor: colors.crema,
   },
   closeBtnText: { fontFamily: fonts.archivo.bold, fontSize: 14, color: '#FFF' },
+  devTestBtn: {
+    alignSelf: 'center', marginTop: 6, marginBottom: 2,
+    paddingHorizontal: 16, paddingVertical: 8,
+    backgroundColor: colors.chip, borderRadius: 12,
+  },
+  devTestBtnText: { fontFamily: fonts.archivo.bold, fontSize: 12, color: colors.arena },
 });
