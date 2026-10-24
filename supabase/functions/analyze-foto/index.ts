@@ -56,9 +56,9 @@ Deno.serve(async (req) => {
     // Verify access: studio membership or project creator
     const { data: project, error: projectErr } = await supabaseAdmin
       .from('projects')
-      .select('studio_id, created_by')
+      .select('studio_id, created_by, name')
       .eq('id', project_id)
-      .single<{ studio_id: string | null; created_by: string }>();
+      .single<{ studio_id: string | null; created_by: string; name: string }>();
 
     console.log('[analyze-foto] project studio_id:', project?.studio_id ?? null, 'created_by:', project?.created_by ?? null, 'err:', projectErr?.message ?? null);
 
@@ -92,6 +92,26 @@ Deno.serve(async (req) => {
 
     console.log('[analyze-foto] auth ok, calling OpenAI with url:', foto_url.slice(0, 80));
 
+    // Fetch rubro context and unresolved pending items if rubro provided
+    let rubroCtx: { name: string; tipo: string | null; status: string | null; end_date: string | null } | null = null;
+    let prevPending: { description: string; trade: string | null; status: string }[] = [];
+    if (rubro_id) {
+      const [rubroRes, pendingRes] = await Promise.all([
+        supabaseAdmin.from('rubros')
+          .select('name, tipo, status, end_date')
+          .eq('id', rubro_id)
+          .single<{ name: string; tipo: string | null; status: string | null; end_date: string | null }>(),
+        supabaseAdmin.from('pending_items')
+          .select('description, trade, status')
+          .eq('rubro_id', rubro_id)
+          .in('status', ['pendiente', 'en_revision'])
+          .order('created_at', { ascending: false })
+          .limit(30),
+      ]);
+      rubroCtx    = rubroRes.data ?? null;
+      prevPending = (pendingRes.data ?? []) as typeof prevPending;
+    }
+
     // Build context from markers
     const markerList: { description: string; rx: number; ry: number }[] = Array.isArray(markers) ? markers : [];
     const markerContext = markerList.length > 0
@@ -102,9 +122,25 @@ Deno.serve(async (req) => {
       ? `\n\nCOMENTARIO GENERAL DEL INSPECTOR: ${String(comment).trim().slice(0, 500)}`
       : '';
 
-    const systemPrompt = `Sos un inspector experto en obras de construcción. Analizás fotos de obra anotadas para identificar problemas, defectos y tareas pendientes. Respondés exclusivamente con JSON válido sin texto adicional.`;
+    const contextLines: string[] = [];
+    if (project?.name) contextLines.push(`Proyecto: ${project.name}`);
+    if (rubroCtx) {
+      const rubroParts = [rubroCtx.name];
+      if (rubroCtx.tipo)     rubroParts.push(`tipo: ${rubroCtx.tipo}`);
+      if (rubroCtx.status)   rubroParts.push(`estado: ${rubroCtx.status}`);
+      if (rubroCtx.end_date) rubroParts.push(`fin estimado: ${rubroCtx.end_date}`);
+      contextLines.push(`Rubro: ${rubroParts.join(' | ')}`);
+    }
+    const pendingBlock = prevPending.length > 0
+      ? `\nPENDIENTES PREVIOS SIN RESOLVER (${prevPending.length}):\n${prevPending.map(p => `- [${p.status}] ${p.description}${p.trade ? ` (${p.trade})` : ''}`).join('\n')}`
+      : '';
+    const contextBlock = contextLines.length > 0 || pendingBlock
+      ? `\n\nCONTEXTO:\n${contextLines.join('\n')}${pendingBlock}`
+      : '';
 
-    const userPrompt = `Analizá esta foto de obra de construcción. Puede tener marcadores numerados, dibujos o anotaciones visuales.${markerContext}${commentContext}
+    const systemPrompt = `Sos un inspector experto en obras de construcción. Analizás fotos de obra anotadas para identificar problemas, defectos y tareas pendientes. Usá el contexto del proyecto y rubro para afinar descripciones. Si un ítem es idéntico o muy similar a un pendiente previo sin resolver, indicalo en la description (ej: "Reincidencia: ..."). Respondés exclusivamente con JSON válido sin texto adicional.`;
+
+    const userPrompt = `Analizá esta foto de obra de construcción. Puede tener marcadores numerados, dibujos o anotaciones visuales.${contextBlock}${markerContext}${commentContext}
 
 Identificá todos los problemas, defectos o tareas pendientes visibles. Cada marcador numerado debe generar su propio ítem, más cualquier problema adicional que observes.
 

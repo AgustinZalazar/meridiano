@@ -17,12 +17,14 @@ interface Report {
   mode: string;
   note: string | null;
   video_path: string | null;
+  projects: { name: string } | null;
+  rubros: { name: string; tipo: string | null; status: string | null; end_date: string | null } | null;
 }
 
 export async function processVideoReport(reportId: string): Promise<void> {
   const { data: report, error } = await supabase
     .from('reports')
-    .select('id, project_id, rubro_id, type, mode, note, video_path')
+    .select('id, project_id, rubro_id, type, mode, note, video_path, projects(name), rubros(name, tipo, status, end_date)')
     .eq('id', reportId)
     .single<Report>();
 
@@ -156,6 +158,36 @@ export async function processVideoReport(reportId: string): Promise<void> {
       ? 'Informe de contratistas: registrá trabajos faltantes, errores de ejecución, incumplimientos de proyecto y aspectos de calidad/seguridad.'
       : 'Observación de oficina técnica: registrá desvíos respecto al proyecto, errores de replanteo, discrepancias de medidas y aspectos técnicos.';
 
+    // Fetch unresolved pending items from same rubro
+    let prevPending: { description: string; trade: string | null; status: string }[] = [];
+    if (report.rubro_id) {
+      const { data: pendingData } = await supabase
+        .from('pending_items')
+        .select('description, trade, status')
+        .eq('rubro_id', report.rubro_id)
+        .in('status', ['pendiente', 'en_revision'])
+        .order('created_at', { ascending: false })
+        .limit(30);
+      prevPending = (pendingData ?? []) as typeof prevPending;
+    }
+
+    const contextLines: string[] = [];
+    if (report.projects?.name) contextLines.push(`Proyecto: ${report.projects.name}`);
+    if (report.rubros) {
+      const r = report.rubros;
+      const rubroParts = [r.name];
+      if (r.tipo)     rubroParts.push(`tipo: ${r.tipo}`);
+      if (r.status)   rubroParts.push(`estado: ${r.status}`);
+      if (r.end_date) rubroParts.push(`fin estimado: ${r.end_date}`);
+      contextLines.push(`Rubro: ${rubroParts.join(' | ')}`);
+    }
+    const pendingBlock = prevPending.length > 0
+      ? `PENDIENTES PREVIOS SIN RESOLVER (${prevPending.length}):\n${prevPending.map(p => `- [${p.status}] ${p.description}${p.trade ? ` (${p.trade})` : ''}`).join('\n')}\n\n`
+      : '';
+    const contextBlock = contextLines.length > 0
+      ? `CONTEXTO:\n${contextLines.join('\n')}\n\n${pendingBlock}`
+      : pendingBlock;
+
     const imageMessages = frameBase64.map((b64) => ({
       type: 'image_url' as const,
       image_url: { url: `data:image/jpeg;base64,${b64}`, detail: 'low' as const },
@@ -179,6 +211,7 @@ REGLAS:
 4. Sé técnico y específico — evitá frases genéricas como "verificar terminaciones" sin detalle.
 5. Si algo aplica a múltiples unidades o a todo el edificio, hacelo explícito en la descripción (ej: "P00 a P03 unidades 02/102/202/302").
 6. El campo "trade" debe ser una especialidad constructiva: Mampostería, Hormigón, Estructura, Instalaciones sanitarias, Instalaciones eléctricas, Revestimientos, Carpintería, Impermeabilización, Tareas generales, u otra pertinente.
+7. Si un ítem es idéntico o muy similar a un pendiente previo sin resolver del contexto, indicalo en la descripción (ej: "Reincidencia: ...").
 
 Respondé ÚNICAMENTE con un JSON array (sin markdown):
 [{"description":"descripción con ubicación y detalle (máx 250 chars)","trade":"Especialidad"}]
@@ -190,6 +223,7 @@ Si no hay pendientes, respondé: []`,
             {
               type: 'text',
               text: [
+                contextBlock,
                 report.note ? `Nota del inspector: "${report.note}"` : '',
                 `Transcripción del recorrido:\n${transcription || '(sin audio)'}`,
               ].filter(Boolean).join('\n\n'),

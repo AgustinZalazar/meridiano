@@ -15,6 +15,7 @@ interface MediaItem {
 interface RequestBody {
   daily_report_id: string;
   media_items: MediaItem[];
+  comment?: string | null;
 }
 
 Deno.serve(async (req) => {
@@ -43,7 +44,7 @@ Deno.serve(async (req) => {
     }
 
     const body: RequestBody = await req.json();
-    const { daily_report_id, media_items } = body;
+    const { daily_report_id, media_items, comment } = body;
 
     if (!daily_report_id || !Array.isArray(media_items) || media_items.length === 0) {
       return new Response(JSON.stringify({ error: 'daily_report_id y media_items son requeridos' }), {
@@ -59,7 +60,7 @@ Deno.serve(async (req) => {
     // Fetch the daily report container to get project/rubro/type context
     const { data: dailyReport, error: drErr } = await supabaseAdmin
       .from('reports')
-      .select('id, project_id, rubro_id, type, status, projects(studio_id)')
+      .select('id, project_id, rubro_id, type, status, projects(studio_id, name), rubros(name, tipo, status, end_date)')
       .eq('id', daily_report_id)
       .single<{
         id: string;
@@ -67,7 +68,8 @@ Deno.serve(async (req) => {
         rubro_id: string | null;
         type: string;
         status: string;
-        projects: { studio_id: string | null } | null;
+        projects: { studio_id: string | null; name: string } | null;
+        rubros: { name: string; tipo: string | null; status: string | null; end_date: string | null } | null;
       }>();
 
     if (drErr || !dailyReport) {
@@ -183,13 +185,52 @@ Deno.serve(async (req) => {
     });
 
     const typeLabel = dailyReport.type === 'oficina' ? 'oficina técnica' : 'contratistas';
+    const projectName = dailyReport.projects?.name ?? null;
+    const rubro       = dailyReport.rubros;
+    const today       = new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const sanitizedComment = comment ? String(comment).trim().slice(0, 800) : null;
+
+    // Fetch unresolved pending items from same rubro
+    let prevPending: { description: string; trade: string | null; status: string }[] = [];
+    if (dailyReport.rubro_id) {
+      const { data: pendingData } = await supabaseAdmin
+        .from('pending_items')
+        .select('description, trade, status')
+        .eq('rubro_id', dailyReport.rubro_id)
+        .in('status', ['pendiente', 'en_revision'])
+        .order('created_at', { ascending: false })
+        .limit(30);
+      prevPending = (pendingData ?? []) as typeof prevPending;
+    }
+
+    const contextLines: string[] = [];
+    if (projectName) contextLines.push(`Proyecto: ${projectName}`);
+    if (rubro) {
+      const rubroParts = [rubro.name];
+      if (rubro.tipo)     rubroParts.push(`tipo: ${rubro.tipo}`);
+      if (rubro.status)   rubroParts.push(`estado: ${rubro.status}`);
+      if (rubro.end_date) rubroParts.push(`fin estimado: ${rubro.end_date}`);
+      contextLines.push(`Rubro: ${rubroParts.join(' | ')}`);
+    }
+    contextLines.push(`Fecha: ${today}`);
+    contextLines.push(`Tipo de informe: ${typeLabel}`);
+    if (sanitizedComment) contextLines.push(`Comentario del inspector: "${sanitizedComment}"`);
+
+    const pendingBlock = prevPending.length > 0
+      ? `\n\nPENDIENTES PREVIOS SIN RESOLVER (${prevPending.length}):\n${prevPending.map(p => `- [${p.status}] ${p.description}${p.trade ? ` (${p.trade})` : ''}`).join('\n')}`
+      : '';
+
+    const contextBlock = contextLines.join('\n') + pendingBlock;
 
     // Use gpt-4o only when there are images; gpt-4o-mini suffices for text-only
     const model = hasImages ? 'gpt-4o' : 'gpt-4o-mini';
 
-    const systemPrompt = `Inspección de obras. Convertís elementos en JSON de pendientes. Con "INSPECTOR: ...": copiá esa frase como description (solo corregí errores tipográficos). Sin nota: describí brevemente el problema visual. Solo JSON válido, sin texto adicional.`;
+    const systemPrompt = `Inspección de obras. Convertís elementos en JSON de pendientes. Con "INSPECTOR: ...": copiá esa frase como description (solo corregí errores tipográficos). Sin nota: describí brevemente el problema visual. Usá el contexto del proyecto y rubro para afinar descripciones. Si un ítem nuevo es idéntico o muy similar a un pendiente previo sin resolver, indicalo en la description (ej: "Reincidencia: ..."). Solo JSON válido, sin texto adicional.`;
 
-    const userPrompt = `${resolvedItems.length} elemento${resolvedItems.length !== 1 ? 's' : ''}, informe ${typeLabel}. Un elemento = un ítem, mismo orden.
+    const userPrompt = `CONTEXTO:
+${contextBlock}
+
+${resolvedItems.length} elemento${resolvedItems.length !== 1 ? 's' : ''}. Un elemento = un ítem, mismo orden.
 
 {"items":[{"description":"...","trade":"..."}],"summary":"1-2 oraciones"}
 

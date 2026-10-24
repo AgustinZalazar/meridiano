@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList, StyleSheet,
-  ActivityIndicator, Alert, ScrollView, Image, Platform,
+  ActivityIndicator, Alert, ScrollView, Image, Platform, TextInput,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -126,6 +126,7 @@ export default function InformeDiaScreen() {
   const [starting,         setStarting]         = useState(false);
   const [closing,          setClosing]          = useState(false);
   const [closeStage,       setCloseStage]       = useState<string | null>(null);
+  const [reportComment,    setReportComment]    = useState('');
 
   // Cache refs — avoid redundant DB queries and signed URL requests on re-focus
   const staticLoaded   = useRef(false);  // week strip + last report: load once per mount
@@ -288,7 +289,11 @@ export default function InformeDiaScreen() {
 
       setCloseStage('Analizando con IA…');
       const { data, error } = await supabase.functions.invoke('process-daily-report', {
-        body: { daily_report_id: openReport.id, media_items: mediaItems },
+        body: {
+          daily_report_id: openReport.id,
+          media_items: mediaItems,
+          comment: reportComment.trim() || null,
+        },
       });
 
       if (error) {
@@ -566,47 +571,6 @@ export default function InformeDiaScreen() {
               </View>
             </View>
 
-            {/* ── Nueva jornada ── */}
-            <View style={s.nuevaJornadaCard}>
-              <View style={s.nuevaJornadaHeader}>
-                <View style={s.nuevaJornadaPlus}>
-                  <Feather name="plus" size={18} color={colors.crema} />
-                </View>
-                <View>
-                  <Text style={s.nuevaJornadaTitle}>Nueva jornada</Text>
-                  <Text style={s.nuevaJornadaSub}>Registrá más material hoy en un informe aparte</Text>
-                </View>
-              </View>
-
-              {/* Compact toggle */}
-              <View style={s.compactToggle}>
-                {(['contratistas', 'oficina'] as ReportType[]).map((val) => (
-                  <TouchableOpacity
-                    key={val}
-                    style={[s.compactToggleBtn, reportType === val && s.compactToggleBtnActive]}
-                    onPress={() => setReportType(val)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[s.compactToggleText, reportType === val && s.compactToggleTextActive]}>
-                      {val === 'contratistas' ? 'Contratistas' : 'Oficina técnica'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <TouchableOpacity
-                style={s.iniciarNuevaBtn}
-                onPress={() => Alert.alert(
-                  'Informe ya generado',
-                  'Ya creaste el informe de hoy. Podés iniciar una nueva jornada mañana.',
-                  [{ text: 'Entendido' }]
-                )}
-                activeOpacity={0.85}
-              >
-                <Feather name="lock" size={14} color={colors.gris} />
-                <Text style={[s.iniciarNuevaBtnText, { color: colors.gris }]}>Disponible mañana</Text>
-              </TouchableOpacity>
-            </View>
           </ScrollView>
         </View>
       );
@@ -716,7 +680,7 @@ export default function InformeDiaScreen() {
       <FlatList
         data={media}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={[s.listContent, { paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[s.listContent, { paddingBottom: insets.bottom + 180 }]}
         showsVerticalScrollIndicator={false}
         renderItem={renderMediaItem}
         ListEmptyComponent={
@@ -729,6 +693,20 @@ export default function InformeDiaScreen() {
           </View>
         }
       />
+
+      <View style={s.commentBar}>
+        <TextInput
+          style={s.commentInput}
+          value={reportComment}
+          onChangeText={setReportComment}
+          placeholder="Comentario general del informe… (opcional)"
+          placeholderTextColor={colors.faint}
+          selectionColor={colors.arena}
+          multiline
+          returnKeyType="done"
+          blurOnSubmit
+        />
+      </View>
 
       <View style={[s.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
         <TouchableOpacity
@@ -1006,6 +984,18 @@ const s = StyleSheet.create({
   emptyMediaTitle: { fontFamily: fonts.archivo.bold, fontSize: 15, color: colors.gris },
   emptyMediaSub: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.faint, textAlign: 'center', lineHeight: 19 },
 
+  commentBar: {
+    position: 'absolute', bottom: 82, left: 0, right: 0,
+    paddingHorizontal: spacing.xl, paddingBottom: 8,
+    backgroundColor: colors.tinta,
+  },
+  commentInput: {
+    borderRadius: 14, backgroundColor: colors.panel,
+    paddingHorizontal: spacing.md, paddingVertical: 10,
+    fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.crema,
+    textAlignVertical: 'top', maxHeight: 80,
+    borderWidth: 1, borderColor: colors.border,
+  },
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', gap: 10,
