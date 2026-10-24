@@ -147,12 +147,20 @@ function PendienteCard({ item, onPress, onComplete, index }: {
         {/* Meta: project */}
         <Text style={styles.cardMeta} numberOfLines={1}>{projectName}</Text>
 
-        {/* Tags: rubro */}
-        {rubroName && (
+        {/* Tags: rubro + informe del día */}
+        {(rubroName || item.source === 'informe_dia') && (
           <View style={styles.cardTagsRow}>
-            <View style={styles.rubroChip}>
-              <Text style={styles.rubroChipText}>{rubroName}</Text>
-            </View>
+            {rubroName && (
+              <View style={styles.rubroChip}>
+                <Text style={styles.rubroChipText}>{rubroName}</Text>
+              </View>
+            )}
+            {item.source === 'informe_dia' && (
+              <View style={styles.informeChip}>
+                <Feather name="calendar" size={9} color="#8B9FD4" />
+                <Text style={styles.informeChipText}>Informe del día</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -383,6 +391,13 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   rubroChipText: { fontFamily: fonts.archivo.bold, fontSize: 9.5, letterSpacing: 0.2, color: colors.arena },
+  informeChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 4, paddingHorizontal: 10, borderRadius: 10,
+    backgroundColor: 'rgba(139,159,212,0.10)', borderWidth: 1, borderColor: 'rgba(139,159,212,0.22)',
+    alignSelf: 'flex-start',
+  },
+  informeChipText: { fontFamily: fonts.archivo.bold, fontSize: 9.5, letterSpacing: 0.2, color: '#8B9FD4' },
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   cardCreator: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: '#3A3A36', letterSpacing: 0.2, flex: 1 },
   completeBtn: {

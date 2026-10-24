@@ -14,7 +14,7 @@ export type DbPendingGlobal = {
   description: string;
   trade: string | null;
   status: PendingStatus;
-  source: 'ai' | 'manual';
+  source: 'ai' | 'manual' | 'informe_dia';
   created_at: string;
   projects: { name: string } | null;
   rubros: { name: string } | null;
@@ -29,7 +29,7 @@ export type DbPendingItem = {
   rubro_id: string;
   trade: string | null;
   status: PendingStatus;
-  source: 'ai' | 'manual';
+  source: 'ai' | 'manual' | 'informe_dia';
   reports: { type: ReportType } | null;
   created_at: string;
   profiles: { full_name: string } | null;

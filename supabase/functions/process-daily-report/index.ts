@@ -307,7 +307,7 @@ Trades: albanilería, electricidad, plomería, carpintería, pintura, herrería,
           description: String(item.description).slice(0, 1000),
           trade:       (item.trade && item.trade !== 'null') ? String(item.trade).slice(0, 100) : null,
           status:      'pendiente',
-          source:      'ai',
+          source:      'informe_dia',
           created_by:  user.id,
         }))
       );
