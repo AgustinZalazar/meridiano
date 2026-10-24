@@ -1,17 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Sentry from '@sentry/react-native';
 import * as Font from 'expo-font';
 import { Archivo_600SemiBold, Archivo_700Bold } from '@expo-google-fonts/archivo';
 import { IBMPlexMono_400Regular, IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/auth-context';
-import { ToastProvider } from '../lib/toast';
+import { ToastProvider, useToast } from '../lib/toast';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { onboardingKey } from './welcome';
+import { autoCloseStaleReports } from '../lib/informe-autoclose';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -24,6 +25,37 @@ function RootLayoutNav() {
   const { session, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const toast = useToast();
+  const appState = useRef(AppState.currentState);
+  const lastAutoClose = useRef<string | null>(null);
+
+  // Auto-close stale open reports when session is available and app comes to foreground
+  useEffect(() => {
+    if (!session) return;
+
+    async function runAutoClose() {
+      const today = new Date().toISOString().slice(0, 10);
+      if (lastAutoClose.current === today) return;
+      lastAutoClose.current = today;
+
+      const result = await autoCloseStaleReports();
+      for (const r of result.processed) {
+        const d = new Date(r.date + 'T00:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+        toast.success(`Informe del ${d} (${r.rubroName}) procesado automáticamente`);
+      }
+    }
+
+    void runAutoClose();
+
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (appState.current.match(/inactive|background/) && nextState === 'active') {
+        void runAutoClose();
+      }
+      appState.current = nextState;
+    });
+
+    return () => sub.remove();
+  }, [session]);
 
   useEffect(() => {
     if (loading) return;

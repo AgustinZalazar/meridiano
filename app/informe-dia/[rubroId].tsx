@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth-context';
 import { useStudio } from '../../lib/use-studio';
 import { useToast } from '../../lib/toast';
+import { scheduleInformeReminder, cancelInformeReminder } from '../../lib/informe-reminder';
 import {
   localIso, todayIso, getMondayIso, getSundayIso,
   getWeekDays, fmtLastReport, fmtDateHeading,
@@ -293,7 +294,15 @@ export default function InformeDiaScreen() {
           if (!live.has(id)) delete signedCache.current[id];
         }
         setThumbUris({ ...signedCache.current });
+
+        // Schedule or cancel end-of-day reminder based on media count
+        if (items.length > 0 && rubroName) {
+          void scheduleInformeReminder(rubroId, rubroName, items.length);
+        } else {
+          void cancelInformeReminder(rubroId);
+        }
       } else {
+        void cancelInformeReminder(rubroId);
         setMedia([]);
         setThumbUris({});
         signedCache.current = {};
@@ -412,6 +421,7 @@ export default function InformeDiaScreen() {
       setClosing(false);
       signedCache.current  = {};
       staticLoaded.current = false;  // week strip will have a new dot after generation
+      if (rubroId) void cancelInformeReminder(rubroId);
       router.replace(`/informe/${data.report_id}?type=${openReport.type}`);
     } catch (e: any) {
       setCloseStage(null);
@@ -444,6 +454,7 @@ export default function InformeDiaScreen() {
           onPress: async () => {
             await supabase.from('report_media').delete().eq('report_id', openReport.id);
             await supabase.from('reports').delete().eq('id', openReport.id);
+            if (rubroId) void cancelInformeReminder(rubroId);
             signedCache.current  = {};
             staticLoaded.current = false;
             setOpenReport(null);
