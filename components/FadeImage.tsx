@@ -7,9 +7,10 @@ interface Props {
   style?: StyleProp<ImageStyle>;
   placeholderColor?: string;
   borderRadius?: number;
+  resizeMode?: 'cover' | 'contain' | 'stretch' | 'center';
 }
 
-export function FadeImage({ uri, style, placeholderColor, borderRadius }: Props) {
+export function FadeImage({ uri, style, placeholderColor, borderRadius, resizeMode = 'cover' }: Props) {
   const opacity  = useRef(new Animated.Value(0)).current;
   const [failed, setFailed] = useState(false);
 
@@ -32,7 +33,7 @@ export function FadeImage({ uri, style, placeholderColor, borderRadius }: Props)
           style={[StyleSheet.absoluteFill, { opacity, borderRadius: br }]}
           onLoad={onLoad}
           onError={() => setFailed(true)}
-          resizeMode="cover"
+          resizeMode={resizeMode}
         />
       )}
     </View>

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, FlatList, StyleSheet,
   ActivityIndicator, Alert, ScrollView, Image, Platform, TextInput,
@@ -87,16 +87,122 @@ const MediaCard = memo(function MediaCard({
 
 async function buildSignedUris(items: ReportMedia[]): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
-  await Promise.all(items.map(async (item) => {
-    if (!item.uri) return;
+  const byBucket: Record<string, { id: string; path: string }[]> = {};
+  for (const item of items) {
+    if (!item.uri) continue;
     const match = item.uri.match(/\/storage\/v1\/object\/(?:public\/)?([^/]+)\/(.+)/);
-    if (!match) return;
+    if (!match) continue;
     const [, bucket, path] = match;
-    const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-    if (data?.signedUrl) result[item.id] = data.signedUrl;
+    (byBucket[bucket] ??= []).push({ id: item.id, path });
+  }
+  await Promise.all(Object.entries(byBucket).map(async ([bucket, entries]) => {
+    const { data } = await supabase.storage.from(bucket).createSignedUrls(entries.map(e => e.path), 3600);
+    if (!data) return;
+    for (let i = 0; i < entries.length; i++) {
+      const url = data[i]?.signedUrl;
+      if (url) result[entries[i].id] = url;
+    }
   }));
   return result;
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+const REPORT_TYPE_OPTIONS: { value: ReportType; label: string; desc: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
+  { value: 'contratistas', label: 'Contratistas', desc: 'Pendientes agrupados por oficio, para el equipo en obra', icon: 'grid' },
+  { value: 'oficina',      label: 'Oficina técnica', desc: 'Avance y observaciones para el estudio', icon: 'clipboard' },
+];
+
+const TopBar = memo(function TopBar({ rubroName, rubroId, openReport, onCancel }: {
+  rubroName: string | null;
+  rubroId: string | null;
+  openReport: DailyReport | null;
+  onCancel: () => void;
+}) {
+  const router = useRouter();
+  return (
+    <View style={s.topBar}>
+      <TouchableOpacity style={s.circleBtn} onPress={() => router.back()} activeOpacity={0.8}>
+        <Feather name="arrow-left" size={16} color={colors.crema} />
+      </TouchableOpacity>
+      <View style={s.topMeta}>
+        <Text style={s.topEyebrow}>INFORME DEL DÍA</Text>
+        <Text style={s.topTitle} numberOfLines={1}>{rubroName ?? 'Rubro'}</Text>
+      </View>
+      {openReport ? (
+        <TouchableOpacity style={s.circleBtn} onPress={onCancel} activeOpacity={0.8}>
+          <Feather name="trash-2" size={16} color={colors.error} />
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={s.circleBtn}
+          onPress={() => router.push({ pathname: '/informe-dia/historial', params: { rubroId: rubroId ?? '', rubroName: rubroName ?? '' } })}
+          activeOpacity={0.8}
+        >
+          <Feather name="clock" size={16} color={colors.crema} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+});
+
+const WeekStrip = memo(function WeekStrip({ weekReportDates }: { weekReportDates: Set<string> }) {
+  const days = getWeekDays();
+  return (
+    <View style={s.weekStrip}>
+      {days.map((day) => (
+        <View
+          key={day.iso}
+          style={[s.dayPill, day.isToday && s.dayPillToday, day.isFuture && s.dayPillFuture]}
+        >
+          <Text style={[s.dayLetter, day.isToday && s.dayTextWhite, day.isFuture && s.dayTextFaint]}>
+            {day.letter}
+          </Text>
+          <Text style={[s.dayNum, day.isToday && s.dayTextWhite, day.isFuture && s.dayTextFaint]}>
+            {day.num}
+          </Text>
+          {weekReportDates.has(day.iso)
+            ? <View style={[s.dayDot, day.isToday && s.dayDotWhite]} />
+            : <View style={s.dayDotGhost} />
+          }
+        </View>
+      ))}
+    </View>
+  );
+});
+
+const TypeSelector = memo(function TypeSelector({ reportType, onChange }: {
+  reportType: ReportType;
+  onChange: (v: ReportType) => void;
+}) {
+  return (
+    <View style={s.typeSection}>
+      <Text style={s.typeSectionHeading}>Tipo de informe</Text>
+      {REPORT_TYPE_OPTIONS.map((opt) => {
+        const active = reportType === opt.value;
+        return (
+          <TouchableOpacity
+            key={opt.value}
+            style={[s.typeCard, active && s.typeCardActive]}
+            onPress={() => onChange(opt.value)}
+            activeOpacity={0.8}
+          >
+            <View style={[s.typeCardIcon, active && s.typeCardIconActive]}>
+              <Feather name={opt.icon} size={18} color={active ? '#FFF' : colors.gris} />
+            </View>
+            <View style={s.typeCardBody}>
+              <Text style={[s.typeCardLabel, active && s.typeCardLabelActive]}>{opt.label}</Text>
+              <Text style={[s.typeCardDesc, active && s.typeCardDescActive]}>{opt.desc}</Text>
+            </View>
+            <View style={[s.typeCardRadio, active && s.typeCardRadioActive]}>
+              {active && <Feather name="check" size={12} color="#FFF" />}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+});
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -205,15 +311,9 @@ export default function InformeDiaScreen() {
           const videoCount = allMedia.filter(m => m.type === 'video').length;
 
           const first3 = allMedia.slice(0, 3);
-          const signedMap: Record<string, string> = {};
-          await Promise.all(first3.map(async (item) => {
-            if (!item.uri) return;
-            const match = item.uri.match(/\/storage\/v1\/object\/(?:public\/)?([^/]+)\/(.+)/);
-            if (!match) return;
-            const [, bucket, path] = match;
-            const { data: sd } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-            if (sd?.signedUrl) signedMap[item.id] = sd.signedUrl;
-          }));
+          const signedMap = await buildSignedUris(
+            first3.filter(m => m.uri).map(m => ({ ...m, video_path: null, note: null, created_at: '' } as ReportMedia))
+          );
 
           const coverUri  = first3[0] ? (signedMap[first3[0].id] ?? null) : null;
           const stackUris = first3.slice(1).map(m => signedMap[m.id]).filter(Boolean) as string[];
@@ -331,7 +431,7 @@ export default function InformeDiaScreen() {
     <MediaCard item={item} thumb={thumbUris[item.id]} onDelete={handleDeleteMedia} />
   ), [thumbUris, handleDeleteMedia]);
 
-  function handleCancelReport() {
+  const handleCancelReport = useCallback(() => {
     if (!openReport) return;
     Alert.alert(
       'Cancelar jornada',
@@ -353,7 +453,7 @@ export default function InformeDiaScreen() {
         },
       ],
     );
-  }
+  }, [openReport]);
 
   function handleClose() {
     if (!openReport) return;
@@ -368,97 +468,6 @@ export default function InformeDiaScreen() {
     );
   }
 
-  // ── Shared components ────────────────────────────────────────────────────
-
-  function TopBar() {
-    return (
-      <View style={s.topBar}>
-        <TouchableOpacity style={s.circleBtn} onPress={() => router.back()} activeOpacity={0.8}>
-          <Feather name="arrow-left" size={16} color={colors.crema} />
-        </TouchableOpacity>
-        <View style={s.topMeta}>
-          <Text style={s.topEyebrow}>INFORME DEL DÍA</Text>
-          <Text style={s.topTitle} numberOfLines={1}>{rubroName ?? 'Rubro'}</Text>
-        </View>
-        {openReport ? (
-          <TouchableOpacity style={s.circleBtn} onPress={handleCancelReport} activeOpacity={0.8}>
-            <Feather name="trash-2" size={16} color={colors.error} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={s.circleBtn}
-            onPress={() => router.push({ pathname: '/informe-dia/historial', params: { rubroId: rubroId ?? '', rubroName: rubroName ?? '' } })}
-            activeOpacity={0.8}
-          >
-            <Feather name="clock" size={16} color={colors.crema} />
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  }
-
-  function WeekStrip() {
-    const days = getWeekDays();
-    return (
-      <View style={s.weekStrip}>
-        {days.map((day) => (
-          <View
-            key={day.iso}
-            style={[
-              s.dayPill,
-              day.isToday && s.dayPillToday,
-              day.isFuture && s.dayPillFuture,
-            ]}
-          >
-            <Text style={[s.dayLetter, day.isToday && s.dayTextWhite, day.isFuture && s.dayTextFaint]}>
-              {day.letter}
-            </Text>
-            <Text style={[s.dayNum, day.isToday && s.dayTextWhite, day.isFuture && s.dayTextFaint]}>
-              {day.num}
-            </Text>
-            {weekReportDates.has(day.iso)
-              ? <View style={[s.dayDot, day.isToday && s.dayDotWhite]} />
-              : <View style={s.dayDotGhost} />
-            }
-          </View>
-        ))}
-      </View>
-    );
-  }
-
-  function TypeSelector() {
-    const options: { value: ReportType; label: string; desc: string; icon: React.ComponentProps<typeof Feather>['name'] }[] = [
-      { value: 'contratistas', label: 'Contratistas', desc: 'Pendientes agrupados por oficio, para el equipo en obra', icon: 'grid' },
-      { value: 'oficina',      label: 'Oficina técnica', desc: 'Avance y observaciones para el estudio', icon: 'clipboard' },
-    ];
-    return (
-      <View style={s.typeSection}>
-        <Text style={s.typeSectionHeading}>Tipo de informe</Text>
-        {options.map((opt) => {
-          const active = reportType === opt.value;
-          return (
-            <TouchableOpacity
-              key={opt.value}
-              style={[s.typeCard, active && s.typeCardActive]}
-              onPress={() => setReportType(opt.value)}
-              activeOpacity={0.8}
-            >
-              <View style={[s.typeCardIcon, active && s.typeCardIconActive]}>
-                <Feather name={opt.icon} size={18} color={active ? '#FFF' : colors.gris} />
-              </View>
-              <View style={s.typeCardBody}>
-                <Text style={[s.typeCardLabel, active && s.typeCardLabelActive]}>{opt.label}</Text>
-                <Text style={[s.typeCardDesc, active && s.typeCardDescActive]}>{opt.desc}</Text>
-              </View>
-              <View style={[s.typeCardRadio, active && s.typeCardRadioActive]}>
-                {active && <Feather name="check" size={12} color="#FFF" />}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  }
 
   // ── Loading ──────────────────────────────────────────────────────────────
 
@@ -483,7 +492,7 @@ export default function InformeDiaScreen() {
 
       return (
         <View style={[s.safe, { paddingTop: insets.top }]}>
-          <TopBar />
+          <TopBar rubroName={rubroName ?? null} rubroId={rubroId ?? null} openReport={openReport} onCancel={handleCancelReport} />
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 40 }]}
@@ -492,7 +501,7 @@ export default function InformeDiaScreen() {
               <Text style={s.dateLine1}>{line1}</Text>
               <Text style={s.dateLine2}>{line2}</Text>
             </View>
-            <WeekStrip />
+            <WeekStrip weekReportDates={weekReportDates} />
 
             {/* ── Generated report card ── */}
             <View style={s.genCard}>
@@ -579,7 +588,7 @@ export default function InformeDiaScreen() {
     // Empty — no report today
     return (
       <View style={[s.safe, { paddingTop: insets.top }]}>
-        <TopBar />
+        <TopBar rubroName={rubroName ?? null} rubroId={rubroId ?? null} openReport={openReport} onCancel={handleCancelReport} />
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[s.scrollContent, { paddingBottom: insets.bottom + 32 }]}
@@ -591,7 +600,7 @@ export default function InformeDiaScreen() {
           </View>
 
           {/* Week strip */}
-          <WeekStrip />
+          <WeekStrip weekReportDates={weekReportDates} />
 
           {/* Empty card */}
           <View style={s.emptyCard}>
@@ -623,7 +632,7 @@ export default function InformeDiaScreen() {
           </View>
 
           {/* Type selector */}
-          <TypeSelector />
+          <TypeSelector reportType={reportType} onChange={setReportType} />
 
           {/* CTA */}
           <TouchableOpacity
@@ -659,7 +668,7 @@ export default function InformeDiaScreen() {
 
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>
-      <TopBar />
+      <TopBar rubroName={rubroName ?? null} rubroId={rubroId ?? null} openReport={openReport} onCancel={handleCancelReport} />
 
       {closing && closeStage && (
         <View style={s.processingBanner}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, Easing } from 'react-native';
 import { BottomSheet } from '../../components/BottomSheet';
 import { SlidingTabs } from '../../components/SlidingTabs';
@@ -63,12 +63,12 @@ function SkeletonPendienteCard() {
   );
 }
 
-function PendienteCard({ item, onPress, onComplete, index }: {
+const PendienteCard = memo(function PendienteCard({ item, onComplete, index }: {
   item: DbPending;
-  onPress: () => void;
-  onComplete: () => void;
+  onComplete: (id: string) => void;
   index: number;
 }) {
+  const router       = useRouter();
   const statusColor  = STATUS_COLOR[item.status];
   const projectName  = item.projects?.name ?? '—';
   const rubroName    = item.rubros?.name ?? null;
@@ -107,7 +107,7 @@ function PendienteCard({ item, onPress, onComplete, index }: {
       duration: 550,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
-    }).start(() => onComplete());
+    }).start(() => onComplete(item.id));
   }
 
   return (
@@ -121,7 +121,7 @@ function PendienteCard({ item, onPress, onComplete, index }: {
         { scale: enterAnim.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] }) },
       ],
     }}>
-      <TouchableOpacity style={[styles.card, dismissing && { elevation: 0, shadowOpacity: 0 }]} onPress={onPress} activeOpacity={0.85}>
+      <TouchableOpacity style={[styles.card, dismissing && { elevation: 0, shadowOpacity: 0 }]} onPress={() => router.push(`/pendiente/${item.id}`)} activeOpacity={0.85}>
         {/* Top row: status indicator + date */}
         <View style={styles.cardTopRow}>
           <View style={styles.statusRow}>
@@ -184,20 +184,22 @@ function PendienteCard({ item, onPress, onComplete, index }: {
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function PendientesScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [activeType, setActiveType] = useState<ReportType>('contratistas');
   const { items, loading, fromCache, refetch } = usePendientesTab();
+  const [localItems, setLocalItems] = useState<DbPending[]>([]);
   const [filterVisible, setFilterVisible] = useState(false);
   const [statusFilter, setStatusFilter] = useState<PendingStatus | 'all' | 'active'>('active');
   const [projectFilter, setProjectFilter] = useState<string | 'all'>('all');
 
   const hasActiveFilters = statusFilter !== 'active' || projectFilter !== 'all';
+
+  useEffect(() => { setLocalItems(items); }, [items]);
 
   function resetFilters() {
     setStatusFilter('active');
@@ -206,23 +208,29 @@ export default function PendientesScreen() {
 
   useEffect(() => { refetch(); }, [refetch]);
 
-  const projectNames = [...new Set(items.map(p => p.projects?.name).filter(Boolean) as string[])].sort();
+  const projectNames = useMemo(
+    () => [...new Set(localItems.map(p => p.projects?.name).filter(Boolean) as string[])].sort(),
+    [localItems],
+  );
 
-  const filtered = items.filter((p) => {
+  const filtered = useMemo(() => localItems.filter((p) => {
     const type = p.reports?.type;
     if (type && type !== activeType) return false;
     if (statusFilter === 'active' && p.status === 'resuelto') return false;
     if (statusFilter !== 'all' && statusFilter !== 'active' && p.status !== statusFilter) return false;
     if (projectFilter !== 'all' && p.projects?.name !== projectFilter) return false;
     return true;
-  });
+  }), [localItems, activeType, statusFilter, projectFilter]);
 
-  const pendienteCount = filtered.filter((p) => p.status === 'pendiente').length;
+  const pendienteCount = useMemo(
+    () => filtered.filter((p) => p.status === 'pendiente').length,
+    [filtered],
+  );
 
-  async function handleComplete(id: string) {
-    setItems((prev) => prev.filter((p) => p.id !== id));
+  const handleComplete = useCallback(async (id: string) => {
+    setLocalItems(prev => prev.filter(p => p.id !== id));
     await supabase.from('pending_items').update({ status: 'resuelto' }).eq('id', id);
-  }
+  }, []);
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>
@@ -271,8 +279,7 @@ export default function PendientesScreen() {
               key={item.id}
               item={item}
               index={i}
-              onPress={() => router.push(`/pendiente/${item.id}`)}
-              onComplete={() => handleComplete(item.id)}
+              onComplete={handleComplete}
             />
           ))
         )}

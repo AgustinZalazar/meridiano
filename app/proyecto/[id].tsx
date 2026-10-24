@@ -470,6 +470,8 @@ export default function ProyectoScreen() {
 
   const { rubros, loading: rubrosLoading, refetch: refetchRubros } = useRubros(projectId ?? '');
   const { items: pendingItems, loading: pendientesLoading, refetch: refetchPendientes } = useProjectPendientes(projectId ?? '');
+  const [localPendingItems, setLocalPendingItems] = useState<DbPendingItem[]>([]);
+  useEffect(() => { setLocalPendingItems(pendingItems); }, [pendingItems]);
   const loading = projectLoading || rubrosLoading || pendientesLoading;
 
   useFocusEffect(
@@ -546,13 +548,13 @@ export default function ProyectoScreen() {
         .upload(storagePath, bytes.buffer, { contentType: pickedFile.mimeType, upsert: false });
       if (uploadErr) throw new Error(`Error al subir: ${uploadErr.message}`);
 
-      const { error: insertErr } = await supabase.from('planos').insert({
+      const { data: inserted, error: insertErr } = await supabase.from('planos').insert({
         project_id: projectId,
         name: planoName.trim(),
         type: planoType,
         storage_path: storagePath,
         uploaded_by: session.user.id,
-      });
+      }).select('id, name, type, storage_path, created_at').single();
       if (insertErr) throw new Error(`Error al guardar: ${insertErr.message}`);
 
       setPlanoSheet(false);
@@ -560,8 +562,7 @@ export default function ProyectoScreen() {
       setPlanoName('');
       setPlanoType('ARQUITECTURA');
 
-      const { data } = await supabase.from('planos').select('id, name, type, storage_path, created_at').eq('project_id', projectId).order('created_at', { ascending: false });
-      setPlanos((data as DbPlano[]) ?? []);
+      if (inserted) setPlanos(prev => [inserted as DbPlano, ...prev]);
     } catch (e: any) {
       Alert.alert('Error', e.message ?? 'No se pudo subir el plano.');
     } finally {
@@ -598,12 +599,12 @@ export default function ProyectoScreen() {
 
   const rubroById = Object.fromEntries(rubros.map((r) => [r.id, r]));
 
-  const pendingCountPerRubro = pendingItems.reduce<Record<string, number>>((acc, p) => {
+  const pendingCountPerRubro = localPendingItems.reduce<Record<string, number>>((acc, p) => {
     if (p.status === 'pendiente') acc[p.rubro_id] = (acc[p.rubro_id] ?? 0) + 1;
     return acc;
   }, {});
 
-  const filteredPendientes = pendingItems.filter((p) => {
+  const filteredPendientes = localPendingItems.filter((p) => {
     const type = p.reports?.type;
     if (type && type !== pendType) return false;
     if (pendRubroFilter && p.rubro_id !== pendRubroFilter) return false;
@@ -612,11 +613,11 @@ export default function ProyectoScreen() {
     return true;
   });
 
-  const openPendingCount = pendingItems.filter((p) => p.status === 'pendiente').length;
+  const openPendingCount = localPendingItems.filter((p) => p.status === 'pendiente').length;
 
   async function handleCompletePending(id: string) {
+    setLocalPendingItems(prev => prev.filter(p => p.id !== id));
     await supabase.from('pending_items').update({ status: 'resuelto' }).eq('id', id);
-    refetchPendientes();
   }
 
   if (loading) {

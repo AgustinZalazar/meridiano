@@ -31,14 +31,13 @@ function getMonthKey(iso: string): string { return iso.slice(0, 7); }
 
 const ReportCard = memo(function ReportCard({
   report,
-  onPress,
 }: {
   report: HistorialReport;
-  onPress: () => void;
 }) {
+  const router = useRouter();
   const { abbrev, num } = getDateBlock(report.date);
   return (
-    <TouchableOpacity style={s.card} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={s.card} onPress={() => router.push(`/informe/${report.id}?type=${report.type}`)} activeOpacity={0.8}>
       <View style={s.dateBlock}>
         <Text style={s.dateAbbrev}>{abbrev}</Text>
         <Text style={s.dateNum}>{num}</Text>
@@ -129,12 +128,21 @@ export default function HistorialScreen() {
         (r.report_media ?? []).slice(0, 3).filter(m => m.uri && !signedCache.current[m.id])
       );
 
-      await Promise.all(toSign.map(async (item) => {
+      // Batch by bucket — 1 request per bucket instead of 1 per item
+      const byBucket: Record<string, { id: string; path: string }[]> = {};
+      for (const item of toSign) {
         const match = item.uri!.match(/\/storage\/v1\/object\/(?:public\/)?([^/]+)\/(.+)/);
-        if (!match) return;
+        if (!match) continue;
         const [, bucket, path] = match;
-        const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 3600);
-        if (data?.signedUrl) signedCache.current[item.id] = data.signedUrl;
+        (byBucket[bucket] ??= []).push({ id: item.id, path });
+      }
+      await Promise.all(Object.entries(byBucket).map(async ([bucket, entries]) => {
+        const { data } = await supabase.storage.from(bucket).createSignedUrls(entries.map(e => e.path), 3600);
+        if (!data) return;
+        for (let i = 0; i < entries.length; i++) {
+          const url = data[i]?.signedUrl;
+          if (url) signedCache.current[entries[i].id] = url;
+        }
       }));
 
       setReports(rawReports.map(r => {
@@ -185,14 +193,10 @@ export default function HistorialScreen() {
     <View style={s.group}>
       <Text style={s.monthLabel}>{group.label}</Text>
       {group.items.map(report => (
-        <ReportCard
-          key={report.id}
-          report={report}
-          onPress={() => router.push(`/informe/${report.id}?type=${report.type}`)}
-        />
+        <ReportCard key={report.id} report={report} />
       ))}
     </View>
-  ), [router]);
+  ), []);
 
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>

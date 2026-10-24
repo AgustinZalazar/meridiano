@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, memo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator, TextInput, Animated, Easing, Dimensions } from 'react-native';
+import { FadeImage } from '../../components/FadeImage';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const GRID_STEP = 48;
@@ -86,7 +87,7 @@ type DbProject = DbProjectCard;
 
 const FILTERS = ['Todos', 'En curso'];
 
-function StatusPill({ rubros }: { rubros: { status: string }[] }) {
+const StatusPill = memo(function StatusPill({ rubros }: { rubros: { status: string }[] }) {
   const active = rubros.some((r) => r.status === 'en_curso');
   const activeCount = rubros.filter((r) => r.status === 'en_curso').length;
   const pulse = useRef(new Animated.Value(1)).current;
@@ -115,8 +116,7 @@ function StatusPill({ rubros }: { rubros: { status: string }[] }) {
       </Text>
     </View>
   );
-}
-
+});
 
 function SkeletonCard() {
   const shimmer = useRef(new Animated.Value(0)).current;
@@ -139,7 +139,8 @@ function SkeletonCard() {
   );
 }
 
-function ProjectCard({ project, onPress, index }: { project: DbProject; onPress: () => void; index: number }) {
+const ProjectCard = memo(function ProjectCard({ project, index }: { project: DbProject; index: number }) {
+  const router = useRouter();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.sequence([
@@ -156,10 +157,10 @@ function ProjectCard({ project, onPress, index }: { project: DbProject; onPress:
         { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
       ],
     }}>
-      <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.card} onPress={() => router.push(`/proyecto/${project.id}`)} activeOpacity={0.85}>
         <View style={styles.cardImageSlot}>
           {project.logo_url ? (
-            <Image source={{ uri: project.logo_url }} style={styles.cardImage} resizeMode="contain" />
+            <FadeImage uri={project.logo_url} style={styles.cardImage} resizeMode="contain" />
           ) : (
             <ProjectLogoFallback propertyType={project.property_type} />
           )}
@@ -174,7 +175,7 @@ function ProjectCard({ project, onPress, index }: { project: DbProject; onPress:
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 export default function ProyectosScreen() {
   const router = useRouter();
@@ -200,27 +201,27 @@ export default function ProyectosScreen() {
     return () => loop.stop();
   }, []);
 
-  function openSearch() {
+  const openSearch = useCallback(() => {
     setSearchVisible(true);
     setTimeout(() => searchInputRef.current?.focus(), 50);
-  }
+  }, []);
 
-  function closeSearch() {
+  const closeSearch = useCallback(() => {
     setSearchVisible(false);
     setSearchQuery('');
-  }
+  }, []);
 
   useFocusEffect(useCallback(() => { refetchStudio(); }, [refetchStudio]));
   useFocusEffect(useCallback(() => { refetchProjects(); }, [refetchProjects]));
 
-  const filtered = projects
+  const filtered = useMemo(() => projects
     .filter((p) => {
       if (filter === 'En curso') return p.rubros.some((r) => r.status === 'en_curso');
       return true;
     })
     .filter((p) =>
       !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
-    );
+    ), [projects, filter, searchQuery]);
 
   const rawLabel = studio?.name ?? profile?.full_name ?? '';
   const brandLabel = rawLabel.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
@@ -328,7 +329,6 @@ export default function ProyectosScreen() {
               key={p.id}
               project={p}
               index={i}
-              onPress={() => router.push(`/proyecto/${p.id}`)}
             />
           ))
         )}
