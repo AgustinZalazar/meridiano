@@ -38,17 +38,19 @@ export function useRubros(projectId: string) {
     }
 
     if (isOnline) {
-      const { data } = await supabase
-        .from('rubros')
-        .select(SELECT)
-        .eq('project_id', projectId)
-        .order('created_at');
-      if (data) {
-        const fresh = data as DbRubro[];
-        setRubros(fresh);
-        await store.setCache(cacheKey, fresh);
-        setFromCache(false);
-      }
+      try {
+        const { data } = await supabase
+          .from('rubros')
+          .select(SELECT)
+          .eq('project_id', projectId)
+          .order('created_at');
+        if (data) {
+          const fresh = data as DbRubro[];
+          setRubros(fresh);
+          await store.setCache(cacheKey, fresh);
+          setFromCache(false);
+        }
+      } catch { /* network error — cached data already applied */ }
       setLoading(false);
     } else if (!cached?.length) {
       setLoading(false);

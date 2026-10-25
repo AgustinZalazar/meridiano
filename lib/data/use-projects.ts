@@ -33,13 +33,15 @@ export function useProjects() {
     }
 
     if (isOnline) {
-      const { data } = await supabase.from('projects').select(SELECT);
-      if (data) {
-        const fresh = data as DbProjectCard[];
-        setProjects(fresh);
-        await store.setCache(CACHE_KEY, fresh);
-        setFromCache(false);
-      }
+      try {
+        const { data } = await supabase.from('projects').select(SELECT);
+        if (data) {
+          const fresh = data as DbProjectCard[];
+          setProjects(fresh);
+          await store.setCache(CACHE_KEY, fresh);
+          setFromCache(false);
+        }
+      } catch { /* network error — cached data already applied */ }
       setLoading(false);
     } else if (!cached?.length) {
       setLoading(false);

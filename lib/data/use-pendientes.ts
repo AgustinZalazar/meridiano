@@ -58,16 +58,18 @@ export function usePendientesTab() {
     }
 
     if (isOnline) {
-      const { data } = await supabase
-        .from('pending_items')
-        .select(TAB_SELECT)
-        .order('created_at', { ascending: false });
-      if (data) {
-        const fresh = data as unknown as DbPendingGlobal[];
-        setItems(fresh);
-        await store.setCache('pendientes:tab', fresh);
-        setFromCache(false);
-      }
+      try {
+        const { data } = await supabase
+          .from('pending_items')
+          .select(TAB_SELECT)
+          .order('created_at', { ascending: false });
+        if (data) {
+          const fresh = data as unknown as DbPendingGlobal[];
+          setItems(fresh);
+          await store.setCache('pendientes:tab', fresh);
+          setFromCache(false);
+        }
+      } catch { /* network error — cached data already applied */ }
       setLoading(false);
     } else if (!cached?.length) {
       setLoading(false);
@@ -101,17 +103,19 @@ export function useProjectPendientes(projectId: string) {
     }
 
     if (isOnline) {
-      const { data } = await supabase
-        .from('pending_items')
-        .select(PROJECT_SELECT)
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
-      if (data) {
-        const fresh = data as unknown as DbPendingItem[];
-        setItems(fresh);
-        await store.setCache(cacheKey, fresh);
-        setFromCache(false);
-      }
+      try {
+        const { data } = await supabase
+          .from('pending_items')
+          .select(PROJECT_SELECT)
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: false });
+        if (data) {
+          const fresh = data as unknown as DbPendingItem[];
+          setItems(fresh);
+          await store.setCache(cacheKey, fresh);
+          setFromCache(false);
+        }
+      } catch { /* network error — cached data already applied */ }
       setLoading(false);
     } else if (!cached?.length) {
       setLoading(false);

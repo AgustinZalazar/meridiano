@@ -2,7 +2,7 @@ import * as Network from 'expo-network';
 import { useEffect, useState } from 'react';
 
 function isReachable(state: Network.NetworkState): boolean {
-  return !!(state.isConnected && state.isInternetReachable !== false);
+  return !!state.isConnected;
 }
 
 export function useNetworkState(): boolean {

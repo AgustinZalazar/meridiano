@@ -5,16 +5,42 @@ import * as Sentry from '@sentry/react-native';
 import * as Font from 'expo-font';
 import { Archivo_600SemiBold, Archivo_700Bold } from '@expo-google-fonts/archivo';
 import { IBMPlexMono_400Regular, IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
-import { AppState, View } from 'react-native';
+import { AppState, View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/auth-context';
 import { ToastProvider, useToast } from '../lib/toast';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { onboardingKey } from './welcome';
+import { fonts } from '../constants/theme';
 import { autoCloseStaleReports } from '../lib/informe-autoclose';
 import { runSync, getPendingCount } from '../lib/offline/sync-engine';
 import { useNetworkState } from '../lib/offline/network';
+
+const ls = StyleSheet.create({
+  offlinePill: {
+    position: 'absolute',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: 'rgba(18,21,26,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    zIndex: 9999,
+  },
+  offlinePillText: {
+    fontFamily: fonts.archivo.semibold,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: 0.2,
+  },
+});
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -28,6 +54,7 @@ function RootLayoutNav() {
   const segments = useSegments();
   const router = useRouter();
   const toast = useToast();
+  const insets = useSafeAreaInsets();
   const appState = useRef(AppState.currentState);
   const lastAutoClose = useRef<string | null>(null);
   const isOnline = useNetworkState();
@@ -95,31 +122,43 @@ function RootLayoutNav() {
   }, [session, loading, segments]);
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.tinta },
-        animation: 'slide_from_right',
-      }}
-    >
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(auth)/registro-invitado" options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="proyecto/[id]" />
-      <Stack.Screen name="proyecto/nueva"   options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="proyecto/editar" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="rubro/nueva" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="rubro/[id]"  options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="nueva-grabacion" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="procesando" />
-      <Stack.Screen name="informe/[id]" />
-      <Stack.Screen name="informe-dia/[rubroId]" />
-      <Stack.Screen name="informe-dia/agregar" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="invitar-miembro" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="studio/crear" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="configuracion-informe" options={{ animation: 'slide_from_right' }} />
-    </Stack>
+    <View style={{ flex: 1 }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.tinta },
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(auth)/registro-invitado" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="proyecto/[id]" />
+        <Stack.Screen name="proyecto/nueva"   options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="proyecto/editar" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="rubro/nueva" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="rubro/[id]"  options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="nueva-grabacion" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="procesando" />
+        <Stack.Screen name="informe/[id]" />
+        <Stack.Screen name="informe-dia/[rubroId]" />
+        <Stack.Screen name="informe-dia/agregar" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="invitar-miembro" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="studio/crear" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="configuracion-informe" options={{ animation: 'slide_from_right' }} />
+      </Stack>
+
+      {!isOnline && (
+        <View
+          style={[ls.offlinePill, { top: insets.top + 8 }]}
+          pointerEvents="none"
+        >
+          <Feather name="wifi-off" size={11} color="rgba(255,255,255,0.9)" />
+          <Text style={ls.offlinePillText}>Sin señal</Text>
+        </View>
+      )}
+    </View>
   );
 }
 

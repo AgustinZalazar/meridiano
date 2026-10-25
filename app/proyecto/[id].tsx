@@ -645,7 +645,22 @@ export default function ProyectoScreen() {
   if (!project) {
     return (
       <View style={[styles.safe, styles.loadingCenter]}>
-        <Text style={styles.emptyText}>Proyecto no encontrado</Text>
+        <View style={{ paddingTop: insets.top }} />
+        {!isOnline ? (
+          <>
+            <Feather name="wifi-off" size={28} color={colors.faint} />
+            <Text style={[styles.emptyText, { marginTop: 12 }]}>Sin señal</Text>
+            <Text style={styles.noDataSubText}>
+              Este proyecto no está guardado en tu dispositivo.{'\n'}Abrilo con señal al menos una vez.
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.emptyText}>Proyecto no encontrado</Text>
+        )}
+        <TouchableOpacity onPress={() => router.back()} style={styles.backFromEmpty}>
+          <Feather name="arrow-left" size={14} color={colors.crema} />
+          <Text style={styles.backFromEmptyText}>Volver</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -1231,6 +1246,9 @@ const styles = StyleSheet.create({
 
   emptyState: { alignItems: 'center', gap: 10, paddingTop: 60 },
   emptyText: { fontFamily: fonts.archivo.semibold, fontSize: 14, color: colors.faint },
+  noDataSubText: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.faint, opacity: 0.6, textAlign: 'center', marginTop: 6, lineHeight: 18 },
+  backFromEmpty: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 24, paddingHorizontal: 16, paddingVertical: 8 },
+  backFromEmptyText: { fontFamily: fonts.archivo.semibold, fontSize: 13, color: colors.crema },
 
   // Pendientes filters
   pendFiltersWrap: { gap: 8, marginBottom: 6 },
