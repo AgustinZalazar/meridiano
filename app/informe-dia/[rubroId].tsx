@@ -13,6 +13,7 @@ import { useAuth } from '../../lib/auth-context';
 import { useStudio } from '../../lib/use-studio';
 import { useToast } from '../../lib/toast';
 import { scheduleInformeReminder, cancelInformeReminder, scheduleTestNotification } from '../../lib/informe-reminder';
+import * as store from '../../lib/offline/store';
 import {
   localIso, todayIso, getMondayIso, getSundayIso,
   getWeekDays, fmtLastReport, fmtDateHeading,
@@ -36,6 +37,7 @@ interface ReportMedia {
   video_path: string | null;
   note: string | null;
   created_at: string;
+  _offline?: boolean;
 }
 
 interface GeneratedToday {
@@ -65,12 +67,22 @@ const MediaCard = memo(function MediaCard({
   onDelete: (id: string) => void;
 }) {
   return (
-    <View style={s.mediaCard}>
-      <FadeImage uri={thumb} style={s.mediaThumb} />
+    <View style={[s.mediaCard, item._offline && s.mediaCardOffline]}>
+      <View>
+        <FadeImage uri={thumb} style={s.mediaThumb} />
+        {item._offline && (
+          <View style={s.offlineBadge}>
+            <Feather name="wifi-off" size={9} color="#FFF" />
+          </View>
+        )}
+      </View>
       <View style={s.mediaBody}>
         <View style={s.mediaTopRow}>
           <Text style={s.mediaType}>{item.type === 'foto' ? 'Foto' : 'Video'}</Text>
-          <Text style={s.mediaTime}>{fmtTime(item.created_at)}</Text>
+          {item._offline
+            ? <Text style={s.mediaPending}>Pendiente sync</Text>
+            : <Text style={s.mediaTime}>{fmtTime(item.created_at)}</Text>
+          }
         </View>
         {item.note
           ? <Text style={s.mediaNote} numberOfLines={2}>{item.note}</Text>
@@ -239,6 +251,7 @@ export default function InformeDiaScreen() {
   const staticLoaded   = useRef(false);  // week strip + last report: load once per mount
   const signedCache    = useRef<Record<string, string>>({});  // signed URLs by item ID
   const isFirstLoad    = useRef(true);   // show spinner only on first load
+  const mediaRef       = useRef<ReportMedia[]>([]);
 
   // Reset caches when rubroId changes
   useEffect(() => {
@@ -280,16 +293,42 @@ export default function InformeDiaScreen() {
         const { data } = await supabase.from('report_media')
           .select('id, type, uri, video_path, note, created_at').eq('report_id', open.id).order('created_at');
         const items = (data as ReportMedia[]) ?? [];
-        setMedia(items);
 
-        // Only sign URLs for items not already cached
+        // Merge pending offline ops for this report
+        const queue = await store.getQueue();
+        const offlineItems: ReportMedia[] = queue
+          .filter(op =>
+            op.status === 'pending' &&
+            (op.type === 'add_report_media_foto' || op.type === 'add_report_media_video') &&
+            op.payload.report_id === open.id
+          )
+          .map(op => ({
+            id: op.localId,
+            type: op.type === 'add_report_media_foto' ? 'foto' as const : 'video' as const,
+            uri: op.type === 'add_report_media_foto' ? op.payload.local_path : op.payload.local_thumb_path,
+            video_path: null,
+            note: op.payload.note ?? null,
+            created_at: new Date(op.createdAt).toISOString(),
+            _offline: true,
+          }));
+
+        // Pre-seed signed cache with local URIs for offline items
+        for (const item of offlineItems) {
+          if (item.uri) signedCache.current[item.id] = item.uri;
+        }
+
+        const merged = [...items, ...offlineItems];
+        mediaRef.current = merged;
+        setMedia(merged);
+
+        // Only sign URLs for DB items not already cached
         const toSign = items.filter(m => m.uri && !signedCache.current[m.id]);
         if (toSign.length > 0) {
           const fresh = await buildSignedUris(toSign);
           Object.assign(signedCache.current, fresh);
         }
-        // Evict stale cache entries (items removed)
-        const live = new Set(items.map(m => m.id));
+        // Evict stale cache entries (DB items removed)
+        const live = new Set(merged.map(m => m.id));
         for (const id of Object.keys(signedCache.current)) {
           if (!live.has(id)) delete signedCache.current[id];
         }
@@ -363,6 +402,7 @@ export default function InformeDiaScreen() {
     setStarting(false);
     if (!report) { toast.error('No se pudo iniciar el informe.'); return; }
     setOpenReport(report);
+    mediaRef.current = [];
     setMedia([]);
     setThumbUris({});
   }
@@ -373,6 +413,7 @@ export default function InformeDiaScreen() {
     setStarting(false);
     if (!report) { toast.error('No se pudo iniciar el informe.'); return; }
     setOpenReport(report);
+    mediaRef.current = [];
     setMedia([]);
     setThumbUris({});
     router.push({
@@ -431,8 +472,14 @@ export default function InformeDiaScreen() {
   }
 
   const handleDeleteMedia = useCallback(async (id: string) => {
-    await supabase.from('report_media').delete().eq('id', id);
+    const item = mediaRef.current.find(m => m.id === id);
+    if (item?._offline) {
+      await store.removeByLocalId(id);
+    } else {
+      await supabase.from('report_media').delete().eq('id', id);
+    }
     delete signedCache.current[id];
+    mediaRef.current = mediaRef.current.filter(m => m.id !== id);
     setMedia(prev => prev.filter(m => m.id !== id));
     setThumbUris({ ...signedCache.current });
   }, []);
@@ -457,6 +504,7 @@ export default function InformeDiaScreen() {
             if (rubroId) void cancelInformeReminder(rubroId);
             signedCache.current  = {};
             staticLoaded.current = false;
+            mediaRef.current     = [];
             setOpenReport(null);
             setMedia([]);
             setThumbUris({});
@@ -1015,6 +1063,14 @@ const s = StyleSheet.create({
   mediaTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   mediaType: { fontFamily: fonts.archivo.bold, fontSize: 13.5, color: colors.crema },
   mediaTime: { fontFamily: fonts.mono.regular, fontSize: 10, color: colors.faint, letterSpacing: 0.3 },
+  mediaPending: { fontFamily: fonts.mono.regular, fontSize: 9.5, color: colors.arena, letterSpacing: 0.3 },
+  mediaCardOffline: { borderWidth: 1, borderColor: 'rgba(217,119,87,0.25)' },
+  offlineBadge: {
+    position: 'absolute', bottom: 5, right: 5,
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: colors.arena,
+    alignItems: 'center', justifyContent: 'center',
+  },
   mediaNote: { fontFamily: fonts.archivo.semibold, fontSize: 12.5, color: colors.gris, lineHeight: 18 },
   mediaNoNote: { fontFamily: fonts.archivo.semibold, fontSize: 12, color: colors.faint, fontStyle: 'italic' },
   mediaDeleteBtn: { padding: 14, alignSelf: 'center', justifyContent: 'center' },

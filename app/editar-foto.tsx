@@ -12,6 +12,9 @@ import { colors, spacing, fonts } from '../constants/theme';
 import { useAuth } from '../lib/auth-context';
 import { uploadFotoAnnotation } from '../lib/upload-image';
 import { supabase } from '../lib/supabase';
+import { useNetworkState } from '../lib/offline/network';
+import { useToast } from '../lib/toast';
+import { enqueueReportFoto } from '../lib/offline/media-mutations';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -130,6 +133,9 @@ export default function EditarFotoScreen() {
   const { uri, project: projectId, rubro, rubroId, type, location, returnToInformeDia, projectName, dailyReportId, dailyNote } =
     useLocalSearchParams<{ uri: string; project: string; rubro: string; rubroId: string; type: string; location?: string; returnToInformeDia?: string; projectName?: string; dailyReportId?: string; dailyNote?: string }>();
 
+  const isOnline = useNetworkState();
+  const toast = useToast();
+
   const viewShotRef = useRef<ViewShot>(null);
   const [capturing, setCapturing] = useState(false);
 
@@ -212,16 +218,29 @@ export default function EditarFotoScreen() {
     setCapturing(true);
     try {
       const capturedUri = await viewShotRef.current.capture!();
-      const base64 = await FileSystem.readAsStringAsync(capturedUri, { encoding: FileSystem.EncodingType.Base64 });
-      const fotoUrl = await uploadFotoAnnotation(session.user.id, capturedUri, base64);
-      if (!fotoUrl) throw new Error('No se pudo subir la foto anotada.');
 
       if (dailyReportId) {
-        // Build note: marker descriptions (like analyze-foto does) + optional general note
         const markersText = markers.length > 0
           ? markers.map((m, i) => `${i + 1}. ${m.description}`).join('; ')
           : null;
         const combinedNote = [dailyNote?.trim() || null, markersText].filter(Boolean).join(' — ') || null;
+
+        if (!isOnline) {
+          const storagePath = `fotos/${session.user.id}/${Date.now()}.png`;
+          await enqueueReportFoto({
+            report_id: dailyReportId,
+            source_uri: capturedUri,
+            storage_path: storagePath,
+            note: combinedNote,
+          });
+          toast.info('Sin señal — se sincronizará cuando vuelva la conexión');
+          router.back();
+          return;
+        }
+
+        const base64 = await FileSystem.readAsStringAsync(capturedUri, { encoding: FileSystem.EncodingType.Base64 });
+        const fotoUrl = await uploadFotoAnnotation(session.user.id, capturedUri, base64);
+        if (!fotoUrl) throw new Error('No se pudo subir la foto anotada.');
 
         const { error } = await supabase.from('report_media').insert({
           report_id: dailyReportId,
@@ -233,6 +252,10 @@ export default function EditarFotoScreen() {
         router.back();
         return;
       }
+
+      const base64 = await FileSystem.readAsStringAsync(capturedUri, { encoding: FileSystem.EncodingType.Base64 });
+      const fotoUrl = await uploadFotoAnnotation(session.user.id, capturedUri, base64);
+      if (!fotoUrl) throw new Error('No se pudo subir la foto anotada.');
 
       router.replace({
         pathname: '/procesando',

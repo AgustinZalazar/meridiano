@@ -74,6 +74,13 @@ export async function dequeue(opId: string): Promise<void> {
   } catch {}
 }
 
+export async function removeByLocalId(localId: string): Promise<void> {
+  try {
+    const queue = await getQueue();
+    await saveQueue(queue.filter((op) => op.localId !== localId));
+  } catch {}
+}
+
 export async function markFailed(opId: string): Promise<void> {
   try {
     const queue = await getQueue();

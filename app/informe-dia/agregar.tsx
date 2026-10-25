@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabase';
 import { useStudio } from '../../lib/use-studio';
 import { useToast } from '../../lib/toast';
 import { getVideoMime } from '../../utils/video';
+import { enqueueReportVideo } from '../../lib/offline/media-mutations';
 
 type MediaMode = 'foto' | 'video';
 
@@ -98,15 +99,50 @@ export default function AgregarMediaScreen() {
     setSaving(true);
 
     try {
+      const ALLOWED_VID_EXTS = ['mp4', 'mov', 'avi', 'mkv', '3gp', 'webm'];
+      const rawExt   = uri.split('.').pop()?.toLowerCase() ?? '';
+      const ext      = ALLOWED_VID_EXTS.includes(rawExt) ? rawExt : 'mp4';
+
       const netState = await Network.getNetworkStateAsync();
-      if (!netState.isConnected) throw new Error('Sin conexión a internet. Verificá tu red e intentá de nuevo.');
+      if (!netState.isConnected) {
+        // Offline path: copy to cache, extract thumbnail, then persist to documentDirectory
+        const cacheDir = `${FileSystem.cacheDirectory ?? ''}daily_uploads/`;
+        await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+        const localPath = `${cacheDir}${Date.now()}.${ext}`;
+        await FileSystem.copyAsync({ from: uri, to: localPath });
+
+        const MAX_VIDEO_BYTES = 49 * 1024 * 1024;
+        const fileInfo = await FileSystem.getInfoAsync(localPath);
+        if (fileInfo.exists && (fileInfo as any).size > MAX_VIDEO_BYTES) {
+          FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
+          throw new Error('El video supera el límite de 50 MB. Grabá un clip más corto e intentá de nuevo.');
+        }
+
+        setUploadLabel('Extrayendo captura…');
+        const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(localPath, { time: 1000 });
+
+        const ts = Date.now();
+        const storagePath = `${studio.id}/daily/${reportId}/${ts}.${ext}`;
+        const thumbPath   = `${studio.id}/daily/${reportId}/thumb_${ts}.jpg`;
+
+        await enqueueReportVideo({
+          report_id: reportId,
+          source_video_uri: localPath,
+          source_thumb_uri: thumbUri,
+          video_ext: ext,
+          storage_video_path: storagePath,
+          storage_thumb_path: thumbPath,
+          note: note.trim() || null,
+        });
+        FileSystem.deleteAsync(localPath, { idempotent: true }).catch(() => {});
+        toast.info('Sin señal — se sincronizará cuando vuelva la conexión');
+        router.back();
+        return;
+      }
 
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Sin sesión activa');
 
-      const ALLOWED_VID_EXTS = ['mp4', 'mov', 'avi', 'mkv', '3gp', 'webm'];
-      const rawExt   = uri.split('.').pop()?.toLowerCase() ?? '';
-      const ext      = ALLOWED_VID_EXTS.includes(rawExt) ? rawExt : 'mp4';
       const videoMime = getVideoMime(ext);
 
       // Copy video to cache first — resolves content:// URIs on Android so
