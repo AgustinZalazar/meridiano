@@ -6,8 +6,10 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../constants/theme';
-import { supabase } from '../../lib/supabase';
 import { usePendientesTab, type DbPendingGlobal } from '../../lib/data/use-pendientes';
+import { useNetworkState } from '../../lib/offline/network';
+import { updatePendienteStatus } from '../../lib/offline/pending-mutations';
+import { useToast } from '../../lib/toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,6 +194,8 @@ export default function PendientesScreen() {
   const insets = useSafeAreaInsets();
   const [activeType, setActiveType] = useState<ReportType>('contratistas');
   const { items, loading, fromCache, refetch } = usePendientesTab();
+  const isOnline = useNetworkState();
+  const toast = useToast();
   const [localItems, setLocalItems] = useState<DbPending[]>([]);
   const [filterVisible, setFilterVisible] = useState(false);
   const [statusFilter, setStatusFilter] = useState<PendingStatus | 'all' | 'active'>('active');
@@ -229,8 +233,9 @@ export default function PendientesScreen() {
 
   const handleComplete = useCallback(async (id: string) => {
     setLocalItems(prev => prev.filter(p => p.id !== id));
-    await supabase.from('pending_items').update({ status: 'resuelto' }).eq('id', id);
-  }, []);
+    await updatePendienteStatus(id, 'resuelto', isOnline);
+    if (!isOnline) toast.info('Sin señal — se sincronizará cuando vuelva la conexión');
+  }, [isOnline]);
 
   return (
     <View style={[styles.safe, { paddingTop: insets.top }]}>

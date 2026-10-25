@@ -13,6 +13,8 @@ import { ToastProvider, useToast } from '../lib/toast';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { onboardingKey } from './welcome';
 import { autoCloseStaleReports } from '../lib/informe-autoclose';
+import { runSync, getPendingCount } from '../lib/offline/sync-engine';
+import { useNetworkState } from '../lib/offline/network';
 
 Sentry.init({
   dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
@@ -28,6 +30,23 @@ function RootLayoutNav() {
   const toast = useToast();
   const appState = useRef(AppState.currentState);
   const lastAutoClose = useRef<string | null>(null);
+  const isOnline = useNetworkState();
+  const wasOnline = useRef(isOnline);
+
+  // Sync queued offline operations when network comes back
+  useEffect(() => {
+    if (!session) return;
+    const cameOnline = !wasOnline.current && isOnline;
+    wasOnline.current = isOnline;
+    if (!cameOnline) return;
+
+    void (async () => {
+      const pending = await getPendingCount();
+      if (pending === 0) return;
+      await runSync();
+      toast.success(`${pending} ${pending === 1 ? 'cambio sincronizado' : 'cambios sincronizados'}`);
+    })();
+  }, [isOnline, session]);
 
   // Auto-close stale open reports when session is available and app comes to foreground
   useEffect(() => {

@@ -14,6 +14,9 @@ import { useRubros, type DbRubro } from '../../lib/data/use-rubros';
 import { useProjectPendientes, type DbPendingItem } from '../../lib/data/use-pendientes';
 import { ProjectPlaceholder } from '../../components/ProjectPlaceholder';
 import * as store from '../../lib/offline/store';
+import { useNetworkState } from '../../lib/offline/network';
+import { updatePendienteStatus } from '../../lib/offline/pending-mutations';
+import { useToast } from '../../lib/toast';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -447,6 +450,7 @@ function PropertyProfileCard({ project }: { project: DbProject }) {
 export default function ProyectoScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const toast = useToast();
   const { id } = useLocalSearchParams<{ id: string }>();
   const projectId = Array.isArray(id) ? id[0] : id;
 
@@ -468,6 +472,7 @@ export default function ProyectoScreen() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [openingPlanoId, setOpeningPlanoId] = useState<string | null>(null);
 
+  const isOnline = useNetworkState();
   const { rubros, loading: rubrosLoading, refetch: refetchRubros } = useRubros(projectId ?? '');
   const { items: pendingItems, loading: pendientesLoading, refetch: refetchPendientes } = useProjectPendientes(projectId ?? '');
   const [localPendingItems, setLocalPendingItems] = useState<DbPendingItem[]>([]);
@@ -617,7 +622,8 @@ export default function ProyectoScreen() {
 
   async function handleCompletePending(id: string) {
     setLocalPendingItems(prev => prev.filter(p => p.id !== id));
-    await supabase.from('pending_items').update({ status: 'resuelto' }).eq('id', id);
+    await updatePendienteStatus(id, 'resuelto', isOnline);
+    if (!isOnline) toast.info('Sin señal — se sincronizará cuando vuelva la conexión');
   }
 
   if (loading) {

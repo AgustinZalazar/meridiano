@@ -6,6 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
+import { useNetworkState } from '../../lib/offline/network';
+import { updatePendienteStatus } from '../../lib/offline/pending-mutations';
+import { useToast } from '../../lib/toast';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +50,8 @@ function formatTime(sec: number) {
 export default function DetallePendienteScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const isOnline = useNetworkState();
+  const toast = useToast();
 
   const [item, setItem] = useState<PendingItem | null>(null);
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
@@ -118,14 +123,12 @@ export default function DetallePendienteScreen() {
   async function handleSave() {
     if (!item) return;
     setSaving(true);
-    const { error } = await supabase
-      .from('pending_items')
-      .update({ status })
-      .eq('id', item.id);
+    const ok = await updatePendienteStatus(item.id, status, isOnline);
     setSaving(false);
-    if (error) {
+    if (!ok) {
       Alert.alert('Error', 'No se pudo guardar el cambio.');
     } else {
+      if (!isOnline) toast.info('Sin señal — se sincronizará cuando vuelva la conexión');
       router.back();
     }
   }

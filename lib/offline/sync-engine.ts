@@ -2,6 +2,8 @@ import { supabase } from '../supabase';
 import * as store from './store';
 import type { QueuedOp } from './types';
 
+export { getPendingCount } from './store';
+
 async function executeOp(op: QueuedOp, idMap: Record<string, string>): Promise<string | null> {
   const payload = store.resolveIds(op.payload, idMap);
 
@@ -11,8 +13,8 @@ async function executeOp(op: QueuedOp, idMap: Record<string, string>): Promise<s
       if (error) throw error;
       return data.id as string;
     }
-    case 'create_informe': {
-      const { data, error } = await supabase.from('informes').insert(payload).select('id').single();
+    case 'create_report': {
+      const { data, error } = await supabase.from('reports').insert(payload).select('id').single();
       if (error) throw error;
       return data.id as string;
     }
@@ -21,10 +23,11 @@ async function executeOp(op: QueuedOp, idMap: Record<string, string>): Promise<s
       if (error) throw error;
       return data.id as string;
     }
-    case 'edit_pendiente': {
-      const { id, ...rest } = payload;
+    case 'update_pendiente_status': {
+      const { id, status } = payload;
       const resolvedId = store.resolveId(id as string, idMap);
-      await supabase.from('pending_items').update(rest).eq('id', resolvedId);
+      const { error } = await supabase.from('pending_items').update({ status }).eq('id', resolvedId);
+      if (error) throw error;
       return resolvedId;
     }
     default:
