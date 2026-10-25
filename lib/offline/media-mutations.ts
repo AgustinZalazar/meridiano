@@ -28,6 +28,7 @@ export async function enqueueReportFoto(opts: {
       note: opts.note,
     },
     localId,
+    dependsOn: opts.report_id.startsWith('offline-') ? opts.report_id : undefined,
   });
   return localId;
 }
@@ -62,6 +63,7 @@ export async function enqueueReportVideo(opts: {
       note: opts.note,
     },
     localId,
+    dependsOn: opts.report_id.startsWith('offline-') ? opts.report_id : undefined,
   });
   return { localId, local_video_path, local_thumb_path };
 }

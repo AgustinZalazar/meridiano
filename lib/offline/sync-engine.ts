@@ -110,6 +110,10 @@ export async function runSync(
   for (const op of pending) {
     try {
       const idMap = await store.getIdMap();
+
+      // Skip if a prerequisite op hasn't synced yet
+      if (op.dependsOn && !idMap[op.dependsOn]) continue;
+
       const serverId = await executeOp(op, idMap);
       if (serverId && serverId !== op.localId) {
         await store.setIdMapping(op.localId, serverId);

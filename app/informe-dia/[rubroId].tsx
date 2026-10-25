@@ -14,6 +14,7 @@ import { useStudio } from '../../lib/use-studio';
 import { useToast } from '../../lib/toast';
 import { scheduleInformeReminder, cancelInformeReminder, scheduleTestNotification } from '../../lib/informe-reminder';
 import * as store from '../../lib/offline/store';
+import { useNetworkState } from '../../lib/offline/network';
 import {
   localIso, todayIso, getMondayIso, getSundayIso,
   getWeekDays, fmtLastReport, fmtDateHeading,
@@ -233,6 +234,7 @@ export default function InformeDiaScreen() {
 
   const { studio } = useStudio();
   const toast = useToast();
+  const isOnline = useNetworkState();
 
   const [loading,          setLoading]          = useState(true);
   const [openReport,       setOpenReport]       = useState<DailyReport | null>(null);
@@ -286,16 +288,40 @@ export default function InformeDiaScreen() {
       const { data: openData } = await supabase.from('reports').select('id, date, type, status')
         .eq('rubro_id', rubroId).eq('date', todayIso()).eq('status', 'abierto').maybeSingle();
 
-      const open = openData as DailyReport | null;
+      // Get queue once — used for offline report + offline media merges
+      const queue = await store.getQueue();
+
+      let open = openData as DailyReport | null;
+      // If no DB report, check queue for a pending create_report for today
+      if (!open) {
+        const pendingCreate = queue.find(op =>
+          op.status === 'pending' &&
+          op.type === 'create_report' &&
+          op.payload.rubro_id === rubroId &&
+          op.payload.date === todayIso()
+        );
+        if (pendingCreate) {
+          open = {
+            id: pendingCreate.localId,
+            date: pendingCreate.payload.date as string,
+            type: pendingCreate.payload.type as ReportType,
+            status: 'abierto',
+          };
+        }
+      }
+
       setOpenReport(open);
 
       if (open) {
-        const { data } = await supabase.from('report_media')
-          .select('id, type, uri, video_path, note, created_at').eq('report_id', open.id).order('created_at');
-        const items = (data as ReportMedia[]) ?? [];
+        // For offline (un-synced) reports the ID doesn't exist in DB yet — skip media DB query
+        let dbItems: ReportMedia[] = [];
+        if (!open.id.startsWith('offline-')) {
+          const { data } = await supabase.from('report_media')
+            .select('id, type, uri, video_path, note, created_at').eq('report_id', open.id).order('created_at');
+          dbItems = (data as ReportMedia[]) ?? [];
+        }
 
         // Merge pending offline ops for this report
-        const queue = await store.getQueue();
         const offlineItems: ReportMedia[] = queue
           .filter(op =>
             op.status === 'pending' &&
@@ -317,12 +343,12 @@ export default function InformeDiaScreen() {
           if (item.uri) signedCache.current[item.id] = item.uri;
         }
 
-        const merged = [...items, ...offlineItems];
+        const merged = [...dbItems, ...offlineItems];
         mediaRef.current = merged;
         setMedia(merged);
 
         // Only sign URLs for DB items not already cached
-        const toSign = items.filter(m => m.uri && !signedCache.current[m.id]);
+        const toSign = dbItems.filter(m => m.uri && !signedCache.current[m.id]);
         if (toSign.length > 0) {
           const fresh = await buildSignedUris(toSign);
           Object.assign(signedCache.current, fresh);
@@ -335,8 +361,8 @@ export default function InformeDiaScreen() {
         setThumbUris({ ...signedCache.current });
 
         // Schedule or cancel end-of-day reminder based on media count
-        if (items.length > 0 && rubroName) {
-          void scheduleInformeReminder(rubroId, rubroName, items.length);
+        if (merged.length > 0 && rubroName) {
+          void scheduleInformeReminder(rubroId, rubroName, merged.length);
         } else {
           void cancelInformeReminder(rubroId);
         }
@@ -386,6 +412,22 @@ export default function InformeDiaScreen() {
 
   async function createReport(): Promise<DailyReport | null> {
     if (!rubroId || !projectId || !session?.user?.id) return null;
+
+    if (!isOnline) {
+      const localId = `offline-report-${Date.now()}`;
+      await store.enqueue({
+        type: 'create_report',
+        payload: {
+          rubro_id: rubroId, project_id: projectId,
+          type: reportType, mode: 'video',
+          status: 'abierto', date: todayIso(),
+          created_by: session.user.id,
+        },
+        localId,
+      });
+      return { id: localId, date: todayIso(), type: reportType, status: 'abierto' };
+    }
+
     const { data, error } = await supabase.from('reports').insert({
       rubro_id: rubroId, project_id: projectId,
       type: reportType, mode: 'video',
@@ -499,8 +541,22 @@ export default function InformeDiaScreen() {
           text: 'Cancelar jornada',
           style: 'destructive',
           onPress: async () => {
-            await supabase.from('report_media').delete().eq('report_id', openReport.id);
-            await supabase.from('reports').delete().eq('id', openReport.id);
+            if (openReport.id.startsWith('offline-')) {
+              // Remove the create_report op and all dependent media ops from queue
+              await store.removeByLocalId(openReport.id);
+              const q = await store.getQueue();
+              for (const op of q) {
+                if (
+                  (op.type === 'add_report_media_foto' || op.type === 'add_report_media_video') &&
+                  op.payload.report_id === openReport.id
+                ) {
+                  await store.dequeue(op.opId);
+                }
+              }
+            } else {
+              await supabase.from('report_media').delete().eq('report_id', openReport.id);
+              await supabase.from('reports').delete().eq('id', openReport.id);
+            }
             if (rubroId) void cancelInformeReminder(rubroId);
             signedCache.current  = {};
             staticLoaded.current = false;
@@ -516,6 +572,10 @@ export default function InformeDiaScreen() {
 
   function handleClose() {
     if (!openReport) return;
+    if (openReport.id.startsWith('offline-')) {
+      Alert.alert('Sin señal', 'El informe se sincronizará cuando vuelva la conexión. Una vez sincronizado podrás cerrarlo y generar el resumen.');
+      return;
+    }
     if (media.length === 0) {
       Alert.alert('Sin elementos', 'Agregá al menos una foto o video antes de cerrar el informe.');
       return;
